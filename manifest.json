@@ -1,0 +1,16 @@
+[
+    {
+        "name": "SyncVote",
+        "guid": "6bfde2dd-8211-4964-b86d-7812a9de160b",
+        "version": "1.0.0.0",
+        "targetAbi": "10.10.0.0",
+        "framework": "net8.0",
+        "description": "A plugin to choose what to watch with your friends using votes.",
+        "overview": "Choose together what to watch before starting a watch party.",
+        "owner": "KappuCitti",
+        "category": "General",
+        "artifacts": [
+            "KappuCitti.Plugin.SyncVote.dll"
+        ]
+    }
+]

@@ -1,0 +1,216 @@
+/* SyncVote Plugin Styles */
+
+.syncVoteButton,
+.joinVoteButton {
+    margin: 10px 5px;
+    background: linear-gradient(135deg, #00a4dc, #0078d4);
+    border: none;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.syncVoteButton:hover,
+.joinVoteButton:hover {
+    background: linear-gradient(135deg, #0078d4, #005a9e);
+    transform: translateY(-1px);
+}
+
+.votingInterface {
+    max-width: 400px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.votingHeader {
+    margin-bottom: 20px;
+}
+
+.timeRemaining {
+    font-size: 24px;
+    font-weight: bold;
+    color: #00a4dc;
+    margin-bottom: 10px;
+}
+
+.progress {
+    width: 100%;
+    height: 4px;
+    background: #e0e0e0;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.progressBar {
+    height: 100%;
+    background: linear-gradient(90deg, #00a4dc, #0078d4);
+    transition: width 0.3s ease;
+}
+
+.movieCard {
+    background: #f8f9fa;
+    border-radius: 12px;
+    padding: 20px;
+    margin: 20px 0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.moviePoster img {
+    max-width: 200px;
+    max-height: 300px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.movieInfo {
+    margin-top: 15px;
+}
+
+.movieInfo h3 {
+    margin: 0 0 10px 0;
+    font-size: 20px;
+    color: #333;
+}
+
+.movieInfo p {
+    margin: 0;
+    color: #666;
+    font-size: 14px;
+}
+
+.votingButtons {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    margin: 30px 0;
+}
+
+.voteButton {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.voteButton:hover {
+    transform: scale(1.1);
+}
+
+.voteButton:active {
+    transform: scale(0.95);
+}
+
+.voteButton.like {
+    background: linear-gradient(135deg, #28a745, #20c997);
+    color: white;
+}
+
+.voteButton.dislike {
+    background: linear-gradient(135deg, #dc3545, #e74c3c);
+    color: white;
+}
+
+.votingStats {
+    color: #666;
+    font-size: 14px;
+    margin-top: 20px;
+}
+
+.votingResults {
+    text-align: center;
+}
+
+.winner {
+    background: linear-gradient(135deg, #ffd700, #ffed4e);
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    color: #333;
+}
+
+.winner h3 {
+    margin: 0 0 10px 0;
+    font-size: 24px;
+}
+
+.otherResults {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    text-align: left;
+}
+
+.otherResults h4 {
+    margin: 0 0 10px 0;
+    color: #333;
+}
+
+.otherResults ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.otherResults li {
+    margin-bottom: 5px;
+    color: #666;
+}
+
+/* Responsive design */
+@media (max-width: 480px) {
+    .votingInterface {
+        padding: 10px;
+    }
+
+    .moviePoster img {
+        max-width: 150px;
+        max-height: 225px;
+    }
+
+    .votingButtons {
+        gap: 20px;
+    }
+
+    .voteButton {
+        width: 50px;
+        height: 50px;
+        font-size: 20px;
+    }
+}
+
+/* Dark theme support */
+@media (prefers-color-scheme: dark) {
+    .movieCard {
+        background: #2d3748;
+        color: white;
+    }
+
+    .movieInfo h3 {
+        color: white;
+    }
+
+    .movieInfo p {
+        color: #a0aec0;
+    }
+
+    .otherResults {
+        background: #2d3748;
+        color: white;
+    }
+
+    .otherResults h4 {
+        color: white;
+    }
+
+    .otherResults li {
+        color: #a0aec0;
+    }
+}

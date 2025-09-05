@@ -6,14 +6,14 @@
     // This needs to be built once before it can be used
     "jellyfinWebDir": "${workspaceFolder}/../jellyfin-web",
     // jellyfinDataDir : the root data directory for a running jellyfin instance
-    // This is where jellyfin stores its configs, plugins, metadata etc
-    // This is platform specific by default, but on Windows defaults to
-    // ${env:LOCALAPPDATA}/jellyfin
-    // and on Linux, it defaults to
-    // ${env:XDG_DATA_HOME}/jellyfin
-    // However ${env:XDG_DATA_HOME} does not work in Visual Studio Code's development container!
-    "jellyfinWindowsDataDir": "${env:LOCALAPPDATA}/jellyfin",
-    "jellyfinLinuxDataDir": "$HOME/.local/share/jellyfin",
-    // The name of the plugin
-    "pluginName": "Jellyfin.Plugin.Template",
+    // On Windows this usually is ${env:LOCALAPPDATA}/jellyfin
+    "jellyfinDataDir": "${env:LOCALAPPDATA}/jellyfin",
+
+    // Solution file name (at repo root)
+    "pluginSolution": "SyncVote.sln",
+    // Project directory name that outputs the DLL
+    "pluginProjectDir": "KappuCitti.Plugin.SyncVote",
+    // Installation directory under Jellyfin's plugins folder
+    // Typically matches the main assembly name
+    "pluginInstallDirName": "KappuCitti.Plugin.SyncVote"
 }

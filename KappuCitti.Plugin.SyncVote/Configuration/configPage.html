@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>SyncVote Configuration</title>
+    </head>
+    <body>
+        <div id="SyncVoteConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+            <div data-role="content">
+                <div class="content-primary">
+                    <form id="SyncVoteConfigForm">
+                        <div class="sectionTitleContainer flex align-items-center">
+                            <h2 class="sectionTitle">SyncVote Settings</h2>
+                        </div>
+
+                        <div class="verticalSection">
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="DefaultTimeLimit">Default Time Limit (minutes)</label>
+                                <select is="emby-select" id="DefaultTimeLimit" name="DefaultTimeLimit">
+                                    <option value="1">1 minute</option>
+                                    <option value="3">3 minutes</option>
+                                    <option value="5">5 minutes</option>
+                                    <option value="10">10 minutes</option>
+                                    <option value="15">15 minutes</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="verticalSection">
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="MaxRoomMembers">Max Room Members</label>
+                                <input is="emby-input" type="number" id="MaxRoomMembers" name="MaxRoomMembers" min="2" max="50" />
+                            </div>
+                        </div>
+
+                        <div class="verticalSection">
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="DefaultSortBy">Default Sort Order</label>
+                                <select is="emby-select" id="DefaultSortBy" name="DefaultSortBy">
+                                    <option value="Random">Random</option>
+                                    <option value="A-Z">A-Z</option>
+                                    <option value="Z-A">Z-A</option>
+                                    <option value="Rating">Rating (High to Low)</option>
+                                    <option value="DateAdded">Date Added (Newest)</option>
+                                    <option value="DateAddedOldest">Date Added (Oldest)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label>
+                                <input is="emby-checkbox" type="checkbox" id="AllowPublicRooms" name="AllowPublicRooms" />
+                                <span>Allow Public Voting Rooms</span>
+                            </label>
+                            <div class="fieldDescription">Allow users to create public voting rooms that anyone can join</div>
+                        </div>
+
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label>
+                                <input is="emby-checkbox" type="checkbox" id="AutoStartVoting" name="AutoStartVoting" />
+                                <span>Auto-start Voting</span>
+                            </label>
+                            <div class="fieldDescription">Automatically start voting when all room members have joined</div>
+                        </div>
+
+                        <div>
+                            <button is="emby-button" type="submit" class="raised button-submit block">
+                                <span>Save</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <script type="text/javascript">
+            (function () {
+                var pluginId = "eb5d7894-8eef-4b36-8d9c-8f2a8f2a8f2a";
+
+                document.getElementById("SyncVoteConfigPage").addEventListener("pageshow", function () {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                        document.getElementById("DefaultTimeLimit").value = config.DefaultTimeLimit || 5;
+                        document.getElementById("MaxRoomMembers").value = config.MaxRoomMembers || 10;
+                        document.getElementById("DefaultSortBy").value = config.DefaultSortBy || "Random";
+                        document.getElementById("AllowPublicRooms").checked = config.AllowPublicRooms !== false;
+                        document.getElementById("AutoStartVoting").checked = config.AutoStartVoting === true;
+                        Dashboard.hideLoadingMsg();
+                    });
+                });
+
+                document.getElementById("SyncVoteConfigForm").addEventListener("submit", function (e) {
+                    Dashboard.showLoadingMsg();
+                    e.preventDefault();
+
+                    ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                        config.DefaultTimeLimit = parseInt(document.getElementById("DefaultTimeLimit").value);
+                        config.MaxRoomMembers = parseInt(document.getElementById("MaxRoomMembers").value);
+                        config.DefaultSortBy = document.getElementById("DefaultSortBy").value;
+                        config.AllowPublicRooms = document.getElementById("AllowPublicRooms").checked;
+                        config.AutoStartVoting = document.getElementById("AutoStartVoting").checked;
+
+                        ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
+                            Dashboard.processPluginConfigurationUpdateResult(result);
+                        });
+                    });
+
+                    return false;
+                });
+            })();
+        </script>
+    </body>
+</html>
