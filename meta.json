@@ -1,0 +1,12 @@
+{
+    "category": "General",
+    "changelog": "- Initial preview release (MVP scaffolding)\n- Backend API: rooms/join/start/vote/results/permissions\n- Config page and mock web assets\n- VS Code build-and-copy tasks\n",
+    "description": "A plugin to choose what to watch with your friends using votes.\n",
+    "guid": "6bfde2dd-8211-4964-b86d-7812a9de160b",
+    "name": "SyncVote",
+    "overview": "Choose together what to watch before starting a watch party",
+    "owner": "KappuCitti",
+    "targetAbi": "10.10.0.0",
+    "timestamp": "2025-09-05T00:00:00Z",
+    "version": "0.0.0.1"
+}

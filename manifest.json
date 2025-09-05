@@ -2,15 +2,20 @@
     {
         "name": "SyncVote",
         "guid": "6bfde2dd-8211-4964-b86d-7812a9de160b",
-        "version": "1.0.0.0",
-        "targetAbi": "10.10.0.0",
         "framework": "net8.0",
         "description": "A plugin to choose what to watch with your friends using votes.",
         "overview": "Choose together what to watch before starting a watch party.",
         "owner": "KappuCitti",
         "category": "General",
-        "artifacts": [
-            "KappuCitti.Plugin.SyncVote.dll"
+        "versions": [
+            {
+                "version": "0.0.0.1",
+                "timestamp": "2025-09-05T00:00:00Z",
+                "targetAbi": "10.10.0.0",
+                "sourceUrl": "https://github.com/KappuCitti/kappucitti-plugin-syncvote/releases/download/0.0.0.1/0.0.0.1-SyncVote.zip",
+                "checksum": "1cb71f9af32fe440131a5f2271fb9220",
+                "changelog": "- Initial preview release (MVP scaffolding)\n- Backend API: rooms/join/start/vote/results/permissions\n- Config page and mock web assets\n- VS Code build-and-copy tasks\n"
+            }
         ]
     }
 ]
