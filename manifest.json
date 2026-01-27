@@ -9,6 +9,14 @@
   "imageUrl": "https://raw.githubusercontent.com/KappuCitti/kappucitti-plugin-syncvote/master/images/logo.png",
   "versions": [
     {
+      "timestamp": "2026-01-27T23:36:22Z",
+      "sourceUrl": "https://github.com/KappuCitti/kappucitti-plugin-syncvote/releases/download/0.0.0.2/0.0.0.2-SyncVote.zip",
+      "checksum": "dbb7e421fa70483b3e40869d948bc8d3",
+      "version": "0.0.0.2",
+      "targetAbi": "10.10.0.0",
+      "changelog": "See release notes on GitHub"
+    },
+    {
       "timestamp": "2026-01-27T23:35:00Z",
       "sourceUrl": "https://github.com/KappuCitti/kappucitti-plugin-syncvote/releases/download/0.0.0.2/0.0.0.2-SyncVote.zip",
       "checksum": "0d58d79392e74ca0e74f9efdd1dad99e",
