@@ -90,6 +90,26 @@ public class VotingRoom
                 _selectedGenres.Add(g);
     }
 
+    /// <summary>
+    /// Maximum parental rating level (null = no filter).
+    /// </summary>
+    public int? MaxParentalRating { get; set; }
+
+    /// <summary>
+    /// Item types to include in voting (e.g., Movie, Series).
+    /// </summary>
+    private readonly List<string> _itemTypes = new() { "Movie" };
+    public IReadOnlyList<string> ItemTypes => _itemTypes.AsReadOnly();
+    public void SetItemTypes(IEnumerable<string> types)
+    {
+        _itemTypes.Clear();
+        foreach (var t in types)
+            if (!string.IsNullOrWhiteSpace(t))
+                _itemTypes.Add(t);
+        if (_itemTypes.Count == 0)
+            _itemTypes.Add("Movie");
+    }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? VotingStartedAt { get; set; }
 }

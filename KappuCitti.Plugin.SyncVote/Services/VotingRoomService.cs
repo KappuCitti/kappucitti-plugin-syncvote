@@ -60,6 +60,8 @@ public class VotingRoomService
         room.AddMember(organizerId);
         room.SetSelectedCollections(request.SelectedCollections ?? new List<Guid>());
         room.SetSelectedGenres(request.SelectedGenres ?? new List<string>());
+        room.MaxParentalRating = request.MaxParentalRating;
+        room.SetItemTypes(request.ItemTypes ?? new List<string> { "Movie" });
 
         _rooms.Add(room);
         _logger.LogInformation("Created voting room {RoomId} by user {UserId}", room.Id, organizerId);

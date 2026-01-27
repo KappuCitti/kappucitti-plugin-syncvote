@@ -1,16 +1,20 @@
 ---
-name: "Template"
+name: "SyncVote"
 guid: "6bfde2dd-8211-4964-b86d-7812a9de160b"
-version: "1.0.0.0"
+version: "0.0.0.1"
 targetAbi: "10.10.0.0"
 framework: "net8.0"
-overview: "Short description about your plugin"
+overview: "Choose together what to watch before starting a watch party."
 description: >
-  This is a longer description that can span more than one
-  line and include details about your plugin.
+  A plugin to enable group decisions on what to watch during SyncPlay using swipe-style voting.
+  Features include library folder selection, genre filtering, age ratings, and access checks.
 category: "General"
-owner: "jellyfin"
+owner: "KappuCitti"
 artifacts:
 - "KappuCitti.Plugin.SyncVote.dll"
 changelog: >
-  changelog
+  - Initial preview release (MVP scaffolding)
+  - Backend API: rooms/join/start/vote/results/permissions
+  - Library filtering (collections, genres, parental ratings)
+  - Access checks for SyncPlay group members
+  - Config page and web UI

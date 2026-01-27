@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>SyncVote</title>
+        <link rel="stylesheet" href="syncvote.css" />
+    </head>
+    <body>
+        <div id="SyncVoteLoaderPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-button">
+            <div data-role="content">
+                <div class="content-primary">
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px">
+                        <h2 class="sectionTitle" style="margin: 0">SyncVote</h2>
+                    </div>
+                    <div class="fieldDescription">L'interfaccia di SyncVote è attiva. Apri un gruppo SyncPlay e poi il suo menu per creare o partecipare alla votazione.</div>
+                    <div style="margin-top: 12px">
+                        <button is="emby-button" type="button" class="raised" id="svOpenHelpBtn"><span>Come funziona</span></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script src="syncvote.js"></script>
+        <script>
+            (function () {
+                function wireHelp() {
+                    var btn = document.getElementById("svOpenHelpBtn");
+                    if (!btn) return;
+                    btn.addEventListener(
+                        "click",
+                        function (e) {
+                            e.preventDefault();
+                            var msg = "Unisciti o crea un gruppo SyncPlay, poi apri il menu del gruppo (azione in alto a destra) per trovare i pulsanti di SyncVote.";
+                            try {
+                                Dashboard.alert({ title: "SyncVote", text: msg, html: false });
+                            } catch (_) {
+                                alert(msg);
+                            }
+                        },
+                        { once: true }
+                    );
+                }
+                var page = document.getElementById("SyncVoteLoaderPage");
+                if (page) {
+                    page.addEventListener("pageshow", wireHelp);
+                } else {
+                    // fallback
+                    wireHelp();
+                }
+            })();
+        </script>
+    </body>
+</html>

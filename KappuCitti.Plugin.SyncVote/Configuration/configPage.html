@@ -3,46 +3,45 @@
     <head>
         <meta charset="utf-8" />
         <title>SyncVote Configuration</title>
+        <link rel="stylesheet" href="syncvote.css" />
+        <script src="syncvote.js"></script>
     </head>
     <body>
         <div id="SyncVoteConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
             <div data-role="content">
                 <div class="content-primary">
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px">
+                        <h2 class="sectionTitle" style="margin: 0" data-i18n="config.title">SyncVote Settings</h2>
+                    </div>
                     <form id="SyncVoteConfigForm">
-                        <div class="sectionTitleContainer flex align-items-center">
-                            <h2 class="sectionTitle">SyncVote Settings</h2>
-                        </div>
-
                         <div class="verticalSection">
                             <div class="inputContainer">
-                                <label class="inputLabel inputLabelUnfocused" for="DefaultTimeLimit">Default Time Limit (minutes)</label>
+                                <label class="inputLabel inputLabelUnfocused" for="DefaultTimeLimit" data-i18n="config.defaultTimeLimit">Default Time Limit (minutes)</label>
                                 <select is="emby-select" id="DefaultTimeLimit" name="DefaultTimeLimit">
-                                    <option value="1">1 minute</option>
-                                    <option value="3">3 minutes</option>
-                                    <option value="5">5 minutes</option>
-                                    <option value="10">10 minutes</option>
-                                    <option value="15">15 minutes</option>
+                                    <option value="1">1</option>
+                                    <option value="3">3</option>
+                                    <option value="5">5</option>
+                                    <option value="10">10</option>
+                                    <option value="15">15</option>
                                 </select>
                             </div>
                         </div>
 
                         <div class="verticalSection">
                             <div class="inputContainer">
-                                <label class="inputLabel inputLabelUnfocused" for="MaxRoomMembers">Max Room Members</label>
+                                <label class="inputLabel inputLabelUnfocused" for="MaxRoomMembers" data-i18n="config.maxRoomMembers">Max Room Members</label>
                                 <input is="emby-input" type="number" id="MaxRoomMembers" name="MaxRoomMembers" min="2" max="50" />
                             </div>
                         </div>
 
                         <div class="verticalSection">
                             <div class="inputContainer">
-                                <label class="inputLabel inputLabelUnfocused" for="DefaultSortBy">Default Sort Order</label>
+                                <label class="inputLabel inputLabelUnfocused" for="DefaultSortBy" data-i18n="config.defaultSort">Default Sort Order</label>
                                 <select is="emby-select" id="DefaultSortBy" name="DefaultSortBy">
-                                    <option value="Random">Random</option>
-                                    <option value="A-Z">A-Z</option>
-                                    <option value="Z-A">Z-A</option>
-                                    <option value="Rating">Rating (High to Low)</option>
-                                    <option value="DateAdded">Date Added (Newest)</option>
-                                    <option value="DateAddedOldest">Date Added (Oldest)</option>
+                                    <option value="Random" data-i18n="sort.random">Random</option>
+                                    <option value="Title" data-i18n="sort.title">Title (A–Z)</option>
+                                    <option value="CommunityRating" data-i18n="sort.rating">Rating</option>
+                                    <option value="PremiereDate" data-i18n="sort.release">Release date</option>
                                 </select>
                             </div>
                         </div>
@@ -50,22 +49,22 @@
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label>
                                 <input is="emby-checkbox" type="checkbox" id="AllowPublicRooms" name="AllowPublicRooms" />
-                                <span>Allow Public Voting Rooms</span>
+                                <span data-i18n="config.allowPublicRooms">Allow Public Voting Rooms</span>
                             </label>
-                            <div class="fieldDescription">Allow users to create public voting rooms that anyone can join</div>
+                            <div class="fieldDescription" data-i18n="config.allowPublicRooms.desc">Allow users to create public voting rooms that anyone can join</div>
                         </div>
 
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label>
                                 <input is="emby-checkbox" type="checkbox" id="AutoStartVoting" name="AutoStartVoting" />
-                                <span>Auto-start Voting</span>
+                                <span data-i18n="config.autoStart">Auto-start Voting</span>
                             </label>
-                            <div class="fieldDescription">Automatically start voting when all room members have joined</div>
+                            <div class="fieldDescription" data-i18n="config.autoStart.desc">Automatically start voting when all room members have joined</div>
                         </div>
 
                         <div>
                             <button is="emby-button" type="submit" class="raised button-submit block">
-                                <span>Save</span>
+                                <span data-i18n="btn.save">Save</span>
                             </button>
                         </div>
                     </form>
@@ -75,14 +74,50 @@
 
         <script type="text/javascript">
             (function () {
-                var pluginId = "eb5d7894-8eef-4b36-8d9c-8f2a8f2a8f2a";
+                // Keep this GUID in sync with Plugin.Id and manifest.json
+                var pluginId = "6bfde2dd-8211-4964-b86d-7812a9de160b";
+                var pluginIdNoDash = pluginId.replace(/-/g, '');
+
+                // Minimal i18n for config page
+                var i18n = {
+                    dict: {},
+                    t: function (key) { return (this.dict && this.dict[key]) || null; }
+                };
+
+                function loadI18n() {
+                    var nav = (navigator.language || (navigator.languages && navigator.languages[0]) || 'en').toLowerCase();
+                    var base = nav.split('-')[0];
+                    var url = ApiClient.getUrl('web/PluginResources', { pluginId: pluginIdNoDash, name: 'i18n/' + base + '.json' });
+                    var urlFallback = ApiClient.getUrl('web/PluginResources', { pluginId: pluginIdNoDash, name: 'i18n/en.json' });
+                    return fetch(url, { cache: 'no-store' }).then(function (res) {
+                        if (!res.ok) throw new Error('i18n not found');
+                        return res.json();
+                    }).catch(function () {
+                        return fetch(urlFallback, { cache: 'no-store' }).then(function (res) { return res.ok ? res.json() : {}; });
+                    }).then(function (dict) { i18n.dict = dict || {}; applyI18n(); });
+                }
+
+                function applyI18n() {
+                    var nodes = document.querySelectorAll('[data-i18n]');
+                    nodes.forEach(function (el) {
+                        var key = el.getAttribute('data-i18n');
+                        var val = i18n.t(key);
+                        if (val) el.textContent = val;
+                    });
+                }
 
                 document.getElementById("SyncVoteConfigPage").addEventListener("pageshow", function () {
                     Dashboard.showLoadingMsg();
-                    ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                    loadI18n().then(function(){
+                        return ApiClient.getPluginConfiguration(pluginId);
+                    }).then(function (config) {
                         document.getElementById("DefaultTimeLimit").value = config.DefaultTimeLimit || 5;
                         document.getElementById("MaxRoomMembers").value = config.MaxRoomMembers || 10;
-                        document.getElementById("DefaultSortBy").value = config.DefaultSortBy || "Random";
+                        // Map deprecated values (A-Z/Z-A/DateAdded etc.) to supported ones
+                        var sort = config.DefaultSortBy || "Random";
+                        var supported = ["Random","Title","CommunityRating","PremiereDate"];
+                        if (supported.indexOf(sort) === -1) sort = "Random";
+                        document.getElementById("DefaultSortBy").value = sort;
                         document.getElementById("AllowPublicRooms").checked = config.AllowPublicRooms !== false;
                         document.getElementById("AutoStartVoting").checked = config.AutoStartVoting === true;
                         Dashboard.hideLoadingMsg();

@@ -1,33 +1,104 @@
 // SyncVote Plugin JavaScript for Jellyfin Web Interface
 
+// Minimal i18n helper + alert fallback
+// Detect plugin context (pluginId from script src) and resource URL builder
+(function bootstrapSyncVoteGlobals() {
+    try {
+        const s = document.currentScript;
+        const url = new URL(s && s.src ? s.src : window.location.href, window.location.origin);
+        const pid = url.searchParams.get("pluginId");
+        const SV = (window.SyncVote = window.SyncVote || {});
+        // PluginResources expects pluginId without dashes
+        SV.pluginId = (pid && pid.trim()) || SV.pluginId || "6bfde2dd82114964b86d7812a9de160b";
+        SV.resUrl = function (name) {
+            try {
+                if (window.ApiClient && typeof window.ApiClient.getUrl === "function") {
+                    return window.ApiClient.getUrl("web/PluginResources", { pluginId: SV.pluginId, name: name });
+                }
+            } catch (_) {}
+            return "/web/PluginResources?pluginId=" + encodeURIComponent(SV.pluginId) + "&name=" + encodeURIComponent(name);
+        };
+    } catch (_) {}
+})();
+class SVI18n {
+    constructor() {
+        this.lang = "en";
+        this.dict = {};
+    }
+    async init() {
+        try {
+            const nav = (navigator && (navigator.language || (navigator.languages && navigator.languages[0]))) || "en";
+            const base = (nav || "en").toLowerCase().split("-")[0];
+            this.lang = base;
+            for (const l of [base, "en"]) {
+                try {
+                    const url = window.SyncVote && window.SyncVote.resUrl ? window.SyncVote.resUrl(`i18n/${l}.json`) : `i18n/${l}.json`;
+                    const res = await fetch(url, { cache: "no-store" });
+                    if (res.ok) {
+                        this.dict = await res.json();
+                        return;
+                    }
+                } catch (_) {
+                    /* ignore */
+                }
+            }
+        } catch (_) {
+            /* ignore */
+        }
+    }
+    t(key, ...args) {
+        const v = (this.dict && this.dict[key]) || key;
+        if (!args || !args.length) return v;
+        return v.replace(/\{(\d+)\}/g, (m, i) => (typeof args[i] !== "undefined" ? args[i] : m));
+    }
+}
+
+function svAlert(messageOrOptions) {
+    try {
+        if (typeof Dashboard !== "undefined" && typeof Dashboard.alert === "function") return Dashboard.alert(messageOrOptions);
+    } catch (_) {}
+    if (typeof messageOrOptions === "string") {
+        alert(messageOrOptions);
+        return Promise.resolve();
+    }
+    if (messageOrOptions && messageOrOptions.text) {
+        alert(messageOrOptions.text);
+    }
+    return Promise.resolve();
+}
+
 class SyncVoteManager {
     constructor() {
         this.apiClient = window.ApiClient;
         this.currentRoom = null;
         this.votingTimer = null;
+        this._candidates = [];
+        this._candidateIndex = 0;
+        this.votesCount = 0;
+        this._menuObserver = null;
+        this.i18n = new SVI18n();
         this.init();
     }
 
     init() {
-        // Add SyncVote button to SyncPlay interface
+        // Try to attach controls into SyncPlay UI
         this.addSyncVoteButton();
-
-        // Listen for SyncPlay events
-        document.addEventListener("syncplay-group-joined", (e) => {
-            this.onSyncPlayGroupJoined(e.detail);
+        // Also attempt once on load, in case already joined
+        this.getCurrentSyncPlayGroupId().then((groupId) => {
+            if (groupId) this.updateSyncVoteControls(groupId);
         });
+
+        // Observe action sheet openings to inject our menu items under SyncPlay group menu
+        this._observeSyncPlayMenus();
+        // Load translations
+        this.i18n.init();
     }
 
     addSyncVoteButton() {
-        // This would be injected into the SyncPlay UI
+        // Ensure we have a container; actual buttons are managed by updateSyncVoteControls
         const syncPlayContainer = document.querySelector(".syncPlayContainer");
-        if (syncPlayContainer && !document.querySelector(".syncVoteButton")) {
-            const button = document.createElement("button");
-            button.className = "syncVoteButton raised button-submit";
-            button.innerHTML = '<i class="material-icons">how_to_vote</i><span>Start Voting</span>';
-            button.onclick = () => this.showVotingDialog();
-
-            syncPlayContainer.appendChild(button);
+        if (syncPlayContainer) {
+            // Nothing to do here; we'll render context-aware controls later
         }
     }
 
@@ -42,10 +113,177 @@ class SyncVoteManager {
             const existingRoom = rooms.find((r) => r.SyncPlayGroupId === groupInfo.GroupId);
             if (existingRoom) {
                 this.currentRoom = existingRoom;
-                this.showJoinVotingButton();
             }
+            await this.updateSyncVoteControls(groupInfo.GroupId);
         } catch (error) {
             console.error("Error checking for existing voting rooms:", error);
+        }
+    }
+
+    _observeSyncPlayMenus() {
+        if (this._menuObserver) return;
+        const target = document.body;
+        if (!target) return;
+        this._menuObserver = new MutationObserver(async () => {
+            try {
+                const sheets = document.querySelectorAll(".actionSheet.syncPlayGroupMenu.opened");
+                for (const sheet of sheets) {
+                    const scroller = sheet.querySelector(".actionSheetScroller");
+                    if (!scroller || scroller.querySelector(".svSyncVoteItem")) continue;
+
+                    // Resolve current group and room/owner
+                    const groupId = await this.getCurrentSyncPlayGroupId();
+                    if (!groupId) continue;
+                    const rooms = await this.apiClient.ajax({ type: "GET", url: this.apiClient.getUrl("SyncVote/Rooms") }).catch(() => []);
+                    const room = (rooms || []).find((r) => r.SyncPlayGroupId === groupId) || null;
+                    this.currentRoom = room;
+                    const userId = await this.apiClient.getCurrentUserId();
+                    const isOwner = !!room && room.OrganizerId && room.OrganizerId.toLowerCase() === (userId || "").toLowerCase();
+                    const perms = await this.apiClient.ajax({ type: "GET", url: this.apiClient.getUrl("SyncVote/Permissions") }).catch(() => ({ CanOrganize: true }));
+
+                    // Build item(s)
+                    if (!room) {
+                        this._appendActionItem(scroller, {
+                            id: "sv-create",
+                            icon: "how_to_vote",
+                            title: this.i18n.t("createVoting"),
+                            subtitle: this.i18n.t("createVoting.subtitle"),
+                            onClick: () => this.showVotingDialog(),
+                        });
+                    }
+
+                    if (room && isOwner) {
+                        this._appendActionItem(scroller, {
+                            id: "sv-manage",
+                            icon: "how_to_vote",
+                            title: room.IsVotingActive ? this.i18n.t("manageVoting.manage") : this.i18n.t("manageVoting.start"),
+                            subtitle: room.IsVotingActive ? this.i18n.t("manageVoting.subtitle.manage") : this.i18n.t("manageVoting.subtitle.start"),
+                            onClick: () => this.showVotingInterface(),
+                        });
+                        this._appendActionItem(scroller, {
+                            id: "sv-results",
+                            icon: "emoji_events",
+                            title: this.i18n.t("results.show"),
+                            subtitle: this.i18n.t("results.subtitle"),
+                            onClick: () => this.showCurrentResults?.(),
+                        });
+                        this._appendActionItem(scroller, {
+                            id: "sv-settings",
+                            icon: "settings",
+                            title: this.i18n.t("config.title"),
+                            subtitle: this.i18n.t("manageVoting.manage"),
+                            onClick: () => this.showVotingDialog(),
+                        });
+                    }
+
+                    if (room && !isOwner) {
+                        this._appendActionItem(scroller, {
+                            id: "sv-vote",
+                            icon: "group_add",
+                            title: this.i18n.t("joinVoting"),
+                            subtitle: this.i18n.t("joinVoting.subtitle"),
+                            onClick: () => this.joinVoting(),
+                        });
+                    }
+                }
+            } catch (_) {
+                /* ignore */
+            }
+        });
+        this._menuObserver.observe(target, { childList: true, subtree: true });
+        // Also try immediately in case a sheet is already open when we attach
+        this._tryInjectIntoOpenSheets();
+    }
+
+    async _tryInjectIntoOpenSheets() {
+        try {
+            const sheets = document.querySelectorAll(".actionSheet.syncPlayGroupMenu.opened");
+            for (const sheet of sheets) {
+                const scroller = sheet.querySelector(".actionSheetScroller");
+                if (!scroller || scroller.querySelector(".svSyncVoteItem")) continue;
+                const groupId = await this.getCurrentSyncPlayGroupId();
+                if (!groupId) continue;
+                const rooms = await this.apiClient.ajax({ type: "GET", url: this.apiClient.getUrl("SyncVote/Rooms") }).catch(() => []);
+                const room = (rooms || []).find((r) => r.SyncPlayGroupId === groupId) || null;
+                this.currentRoom = room;
+                const userId = await this.apiClient.getCurrentUserId();
+                const isOwner = !!room && room.OrganizerId && room.OrganizerId.toLowerCase() === (userId || "").toLowerCase();
+                const perms = await this.apiClient.ajax({ type: "GET", url: this.apiClient.getUrl("SyncVote/Permissions") }).catch(() => ({ CanOrganize: true }));
+
+                if (!room) {
+                    this._appendActionItem(scroller, {
+                        id: "sv-create",
+                        icon: "how_to_vote",
+                        title: this.i18n.t("createVoting"),
+                        subtitle: this.i18n.t("createVoting.subtitle"),
+                        onClick: () => this.showVotingDialog(),
+                    });
+                }
+                if (room && isOwner) {
+                    this._appendActionItem(scroller, {
+                        id: "sv-manage",
+                        icon: "how_to_vote",
+                        title: room.IsVotingActive ? this.i18n.t("manageVoting.manage") : this.i18n.t("manageVoting.start"),
+                        subtitle: room.IsVotingActive ? this.i18n.t("manageVoting.subtitle.manage") : this.i18n.t("manageVoting.subtitle.start"),
+                        onClick: () => this.showVotingInterface(),
+                    });
+                    this._appendActionItem(scroller, {
+                        id: "sv-results",
+                        icon: "emoji_events",
+                        title: this.i18n.t("results.show"),
+                        subtitle: this.i18n.t("results.subtitle"),
+                        onClick: () => this.showCurrentResults?.(),
+                    });
+                    this._appendActionItem(scroller, {
+                        id: "sv-settings",
+                        icon: "settings",
+                        title: this.i18n.t("config.title"),
+                        subtitle: this.i18n.t("manageVoting.manage"),
+                        onClick: () => this.showVotingDialog(),
+                    });
+                }
+                if (room && !isOwner) {
+                    this._appendActionItem(scroller, {
+                        id: "sv-vote",
+                        icon: "group_add",
+                        title: this.i18n.t("joinVoting"),
+                        subtitle: this.i18n.t("joinVoting.subtitle"),
+                        onClick: () => this.joinVoting(),
+                    });
+                }
+            }
+        } catch (_) {
+            /* ignore */
+        }
+    }
+
+    _appendActionItem(container, { id, icon, title, subtitle, onClick }) {
+        const btn = document.createElement("button");
+        btn.setAttribute("is", "emby-button");
+        btn.type = "button";
+        // Do NOT add 'actionSheetMenuItem' to avoid interfering with the sheet's internal resolution
+        btn.className = "listItem listItem-button listItem-border emby-button svSyncVoteItem";
+        btn.dataset.id = id;
+        btn.innerHTML = `
+            <span class="actionsheetMenuItemIcon listItemIcon listItemIcon-transparent material-icons ${icon}" aria-hidden="true"></span>
+            <div class="listItemBody actionsheetListItemBody">
+                <div class="listItemBodyText actionSheetItemText">${title}</div>
+                <div class="listItemBodyText secondary">${subtitle || ""}</div>
+            </div>
+        `;
+        btn.addEventListener("click", (e) => {
+            e.preventDefault();
+            onClick && onClick();
+        });
+        container.appendChild(btn);
+    }
+
+    _openSyncPlaySettings(sheetRoot) {
+        try {
+            const settingsBtn = sheetRoot.querySelector('[data-id="settings"], .actionSheetMenuItem[data-id="settings"]');
+            if (settingsBtn) settingsBtn.click();
+        } catch (_) {
+            /* ignore */
         }
     }
 
@@ -61,96 +299,353 @@ class SyncVoteManager {
         }
     }
 
+    async updateSyncVoteControls(groupId) {
+        const container = document.querySelector(".syncPlayContainer, .playerSettings, .videoOsdSettings, .actionSheetContent, .dialogContent");
+        if (!container) return;
+        // Skip the main group menu sheet to avoid breaking its lifecycle
+        const sheet = container.closest(".actionSheet.syncPlayGroupMenu");
+        if (sheet) return;
+
+        // Clear existing controls we manage
+        container.querySelectorAll(".syncVoteButton, .joinVoteButton, .svOwnerBtn, .svParticipantBtn").forEach((el) => el.remove());
+
+        // Resolve room and permissions
+        const rooms = await this.apiClient.ajax({ type: "GET", url: this.apiClient.getUrl("SyncVote/Rooms") }).catch(() => []);
+        const room = (rooms || []).find((r) => r.SyncPlayGroupId === groupId) || null;
+        this.currentRoom = room;
+        const userId = await this.apiClient.getCurrentUserId();
+        const isOwner = !!room && room.OrganizerId && room.OrganizerId.toLowerCase() === (userId || "").toLowerCase();
+        const perms = await this.apiClient.ajax({ type: "GET", url: this.apiClient.getUrl("SyncVote/Permissions") }).catch(() => ({ CanOrganize: false }));
+
+        if (!room) {
+            if (!perms || !perms.CanOrganize) return; // Nothing to render for non-organizers
+            const btn = document.createElement("button");
+            btn.className = "syncVoteButton raised button-submit svOwnerBtn";
+            btn.innerHTML = `<i class="material-icons">how_to_vote</i><span>${this.i18n.t("createVoting")}</span>`;
+            btn.onclick = () => this.showVotingDialog();
+            container.appendChild(btn);
+            return;
+        }
+
+        if (isOwner) {
+            if (!room.IsVotingActive) {
+                const startBtn = document.createElement("button");
+                startBtn.className = "raised button-submit svOwnerBtn";
+                startBtn.innerHTML = `<i class="material-icons">play_arrow</i><span>${this.i18n.t("manageVoting.start")}</span>`;
+                startBtn.onclick = async () => {
+                    await this.apiClient.ajax({ type: "POST", url: this.apiClient.getUrl(`SyncVote/Room/${room.Id}/StartVoting`) });
+                    this.showVotingInterface?.();
+                };
+                container.appendChild(startBtn);
+            }
+            const panelBtn = document.createElement("button");
+            panelBtn.className = "raised svOwnerBtn";
+            panelBtn.innerHTML = `<i class="material-icons">how_to_vote</i><span>${this.i18n.t("btn.openPanel")}</span>`;
+            panelBtn.onclick = () => this.showVotingInterface();
+            container.appendChild(panelBtn);
+        } else {
+            const joinBtn = document.createElement("button");
+            joinBtn.className = "joinVoteButton raised button-submit svParticipantBtn";
+            joinBtn.innerHTML = `<i class="material-icons">group_add</i><span>${this.i18n.t("joinVoting")}</span>`;
+            joinBtn.onclick = () => this.joinVoting();
+            container.appendChild(joinBtn);
+        }
+    }
+
     async showVotingDialog() {
+        // Load library data first
+        await this._loadLibraryData();
+
         // Create voting room creation dialog
+        const dialogHtml = this.getVotingDialogHtml();
+
         const dialogOptions = {
-            title: "Create Voting Room",
-            text: this.getVotingDialogHtml(),
+            title: this.i18n.t("dialog.createRoom.title"),
+            text: dialogHtml,
             html: true,
             buttons: [
                 {
-                    name: "Cancel",
+                    name: this.i18n.t("btn.close"),
                     id: "cancel",
                     type: "cancel",
                 },
                 {
-                    name: "Create Room",
+                    name: this.i18n.t("btn.createRoom"),
                     id: "create",
                     type: "submit",
                 },
             ],
         };
 
-        const dialog = await Dashboard.alert(dialogOptions);
+        // Wire up events after a small delay to allow DOM to render
+        setTimeout(() => this._wireDialogEvents(), 100);
+
+        const dialog = await (typeof Dashboard !== "undefined" && Dashboard.alert ? Dashboard.alert(dialogOptions) : Promise.resolve(null));
 
         if (dialog === "create") {
             await this.createVotingRoom();
         }
     }
 
+    async _loadLibraryData() {
+        try {
+            // Load collections, genres, and ratings in parallel
+            const [collections, genres, ratings, syncPlayInfo] = await Promise.all([this.apiClient.ajax({ type: "GET", url: this.apiClient.getUrl("SyncVote/Library/Collections") }).catch(() => []), this.apiClient.ajax({ type: "GET", url: this.apiClient.getUrl("SyncVote/Library/Genres") }).catch(() => []), this.apiClient.ajax({ type: "GET", url: this.apiClient.getUrl("SyncVote/Library/ParentalRatings") }).catch(() => []), this.apiClient.ajax({ type: "GET", url: this.apiClient.getUrl("SyncVote/SyncPlayInfo") }).catch(() => ({}))]);
+
+            this._libraryCollections = collections || [];
+            this._libraryGenres = genres || [];
+            this._parentalRatings = ratings || [];
+            this._syncPlayInfo = syncPlayInfo || {};
+        } catch (e) {
+            console.error("Error loading library data:", e);
+            this._libraryCollections = [];
+            this._libraryGenres = [];
+            this._parentalRatings = [];
+            this._syncPlayInfo = {};
+        }
+    }
+
+    async _checkAccessForCollections(collectionIds) {
+        if (!collectionIds || collectionIds.length === 0) return { HasAccessIssues: false };
+        try {
+            return await this.apiClient.ajax({
+                type: "POST",
+                url: this.apiClient.getUrl("SyncVote/CheckAccess"),
+                data: JSON.stringify({ CollectionIds: collectionIds }),
+                contentType: "application/json",
+            });
+        } catch (e) {
+            console.error("Error checking access:", e);
+            return { HasAccessIssues: false };
+        }
+    }
+
     getVotingDialogHtml() {
+        // Build collections checkboxes
+        const collectionsHtml = this._libraryCollections
+            .map(
+                (c) => `
+            <label class="sv-checkbox-item">
+                <input type="checkbox" class="sv-collection-check" value="${c.Id}" data-name="${c.Name}">
+                <span>${c.Name}</span>
+                <span class="sv-item-count">(${c.ItemCount})</span>
+            </label>
+        `,
+            )
+            .join("");
+
+        // Build genres checkboxes (limit display, expandable)
+        const topGenres = this._libraryGenres.slice(0, 12);
+        const moreGenres = this._libraryGenres.slice(12);
+        const genresHtml = topGenres
+            .map(
+                (g) => `
+            <label class="sv-checkbox-item sv-genre-item">
+                <input type="checkbox" class="sv-genre-check" value="${g}">
+                <span>${g}</span>
+            </label>
+        `,
+            )
+            .join("");
+        const moreGenresHtml = moreGenres
+            .map(
+                (g) => `
+            <label class="sv-checkbox-item sv-genre-item">
+                <input type="checkbox" class="sv-genre-check" value="${g}">
+                <span>${g}</span>
+            </label>
+        `,
+            )
+            .join("");
+
+        // Build parental ratings select
+        const ratingsHtml = this._parentalRatings
+            .map(
+                (r) => `
+            <option value="${r.Value}">${r.Name}</option>
+        `,
+            )
+            .join("");
+
+        const memberCount = this._syncPlayInfo?.MemberCount || 1;
+
         return `
-            <div class="inputContainer">
-                <label for="roomName">Room Name:</label>
-                <input type="text" id="roomName" class="emby-input" placeholder="Enter room name..." required>
-            </div>
-            <div class="inputContainer">
-                <label for="timeLimit">Time Limit:</label>
-                <select id="timeLimit" class="emby-select">
-                    <option value="1">1 minute</option>
-                    <option value="3">3 minutes</option>
-                    <option value="5" selected>5 minutes</option>
-                    <option value="10">10 minutes</option>
-                    <option value="15">15 minutes</option>
-                </select>
-            </div>
-            <div class="inputContainer">
-                <label for="sortBy">Sort By:</label>
-                <select id="sortBy" class="emby-select">
-                    <option value="Random" selected>Random</option>
-                    <option value="A-Z">A-Z</option>
-                    <option value="Z-A">Z-A</option>
-                    <option value="Rating">Rating</option>
-                    <option value="DateAdded">Date Added</option>
-                </select>
+            <div class="sv-dialog-content">
+                <div class="sv-access-warning" id="svAccessWarning" style="display:none;">
+                    <span class="material-icons">warning</span>
+                    <span>${this.i18n.t("warning.accessIssues")}</span>
+                </div>
+
+                <div class="inputContainer">
+                    <label for="roomName">${this.i18n.t("field.roomName")}</label>
+                    <input type="text" id="roomName" class="emby-input" placeholder="${this.i18n.t("field.roomName")}" required>
+                </div>
+
+                <div class="sv-section">
+                    <h3 class="sv-section-title">
+                        <span class="material-icons">folder</span>
+                        ${this.i18n.t("field.collections")}
+                    </h3>
+                    <p class="sv-section-desc">${this.i18n.t("field.collections.desc")}</p>
+                    <div class="sv-checkbox-grid" id="svCollections">
+                        ${collectionsHtml || `<p class="sv-empty">${this.i18n.t("empty.collections")}</p>`}
+                    </div>
+                </div>
+
+                <div class="sv-section">
+                    <h3 class="sv-section-title">
+                        <span class="material-icons">category</span>
+                        ${this.i18n.t("field.genres")}
+                    </h3>
+                    <div class="sv-checkbox-grid sv-genres-grid" id="svGenres">
+                        ${genresHtml}
+                        ${moreGenresHtml ? `<div class="sv-more-genres" id="svMoreGenres" style="display:none;">${moreGenresHtml}</div>` : ""}
+                    </div>
+                    ${
+                        moreGenres.length > 0
+                            ? `
+                        <button type="button" class="sv-show-more-btn" id="svShowMoreGenres">
+                            ${this.i18n.t("btn.showMore")} (${moreGenres.length})
+                        </button>
+                    `
+                            : ""
+                    }
+                </div>
+
+                <div class="sv-section sv-filters-row">
+                    <div class="inputContainer sv-filter-item">
+                        <label for="maxRating">${this.i18n.t("field.maxRating")}</label>
+                        <select id="maxRating" class="emby-select">
+                            <option value="">${this.i18n.t("filter.noLimit")}</option>
+                            ${ratingsHtml}
+                        </select>
+                    </div>
+
+                    <div class="inputContainer sv-filter-item">
+                        <label for="timeLimit">${this.i18n.t("field.timeLimit")}</label>
+                        <select id="timeLimit" class="emby-select">
+                            <option value="1">1 ${this.i18n.t("time.minutes")}</option>
+                            <option value="3">3 ${this.i18n.t("time.minutes")}</option>
+                            <option value="5" selected>5 ${this.i18n.t("time.minutes")}</option>
+                            <option value="10">10 ${this.i18n.t("time.minutes")}</option>
+                            <option value="15">15 ${this.i18n.t("time.minutes")}</option>
+                        </select>
+                    </div>
+
+                    <div class="inputContainer sv-filter-item">
+                        <label for="sortBy">${this.i18n.t("field.sortBy")}</label>
+                        <select id="sortBy" class="emby-select">
+                            <option value="Random" selected>${this.i18n.t("sort.random")}</option>
+                            <option value="Title">${this.i18n.t("sort.title")}</option>
+                            <option value="CommunityRating">${this.i18n.t("sort.rating")}</option>
+                            <option value="PremiereDate">${this.i18n.t("sort.release")}</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="sv-info-bar">
+                    <span class="material-icons">group</span>
+                    <span>${this.i18n.t("info.syncPlayMembers", memberCount)}</span>
+                </div>
             </div>
         `;
     }
 
+    _wireDialogEvents() {
+        // Wire up collection change to check access
+        const collectionChecks = document.querySelectorAll(".sv-collection-check");
+        const accessWarning = document.getElementById("svAccessWarning");
+        let checkTimeout = null;
+        const self = this;
+
+        const debounceCheckAccess = () => {
+            if (checkTimeout) clearTimeout(checkTimeout);
+            checkTimeout = setTimeout(async () => {
+                const selected = Array.from(collectionChecks)
+                    .filter((c) => c.checked)
+                    .map((c) => c.value);
+                if (selected.length > 0) {
+                    const result = await self._checkAccessForCollections(selected);
+                    if (result && result.HasAccessIssues) {
+                        accessWarning.style.display = "flex";
+                    } else {
+                        accessWarning.style.display = "none";
+                    }
+                } else {
+                    accessWarning.style.display = "none";
+                }
+            }, 500);
+        };
+
+        collectionChecks.forEach((cb) => {
+            cb.addEventListener("change", debounceCheckAccess);
+        });
+
+        // Show more genres button
+        const showMoreBtn = document.getElementById("svShowMoreGenres");
+        const moreGenresDiv = document.getElementById("svMoreGenres");
+        if (showMoreBtn && moreGenresDiv) {
+            const showMoreText = this.i18n.t("btn.showMore");
+            const showLessText = this.i18n.t("btn.showLess");
+            const moreCount = this._libraryGenres.length > 12 ? this._libraryGenres.length - 12 : 0;
+
+            showMoreBtn.addEventListener("click", () => {
+                const isHidden = moreGenresDiv.style.display === "none";
+                moreGenresDiv.style.display = isHidden ? "contents" : "none";
+                showMoreBtn.textContent = isHidden ? showLessText : `${showMoreText} (${moreCount})`;
+            });
+        }
+    }
+
     async createVotingRoom() {
-        const roomName = document.getElementById("roomName").value;
-        const timeLimit = parseInt(document.getElementById("timeLimit").value);
-        const sortBy = document.getElementById("sortBy").value;
+        const roomName = document.getElementById("roomName")?.value;
+        const timeLimit = parseInt(document.getElementById("timeLimit")?.value || "5");
+        const sortBy = document.getElementById("sortBy")?.value || "Random";
+        const maxRating = document.getElementById("maxRating")?.value;
+
+        // Get selected collections
+        const selectedCollections = Array.from(document.querySelectorAll(".sv-collection-check:checked")).map((cb) => cb.value);
+
+        // Get selected genres
+        const selectedGenres = Array.from(document.querySelectorAll(".sv-genre-check:checked")).map((cb) => cb.value);
 
         if (!roomName) {
-            Dashboard.alert("Please enter a room name");
+            svAlert(this.i18n.t("msg.enterRoomName"));
             return;
         }
 
         try {
-            // Get current SyncPlay group ID (this would come from SyncPlay API)
-            const syncPlayGroupId = this.getCurrentSyncPlayGroupId();
+            // Get current SyncPlay group ID from active session
+            const syncPlayGroupId = await this.getCurrentSyncPlayGroupId();
+
+            const requestData = {
+                Name: roomName,
+                SyncPlayGroupId: syncPlayGroupId,
+                TimeLimit: timeLimit,
+                SortBy: sortBy,
+                SelectedCollections: selectedCollections,
+                SelectedGenres: selectedGenres,
+                ItemTypes: ["Movie"],
+            };
+
+            // Add parental rating if selected
+            if (maxRating && maxRating !== "") {
+                requestData.MaxParentalRating = parseInt(maxRating);
+            }
 
             const room = await this.apiClient.ajax({
                 type: "POST",
                 url: this.apiClient.getUrl("SyncVote/Room"),
-                data: JSON.stringify({
-                    Name: roomName,
-                    SyncPlayGroupId: syncPlayGroupId,
-                    TimeLimit: timeLimit,
-                    SortBy: sortBy,
-                    SelectedCollections: [], // Would be populated from UI
-                    SelectedGenres: [], // Would be populated from UI
-                }),
+                data: JSON.stringify(requestData),
                 contentType: "application/json",
             });
 
             this.currentRoom = room;
-            Dashboard.alert("Voting room created successfully!");
+            svAlert(this.i18n.t("msg.roomCreated"));
             this.showVotingInterface();
         } catch (error) {
             console.error("Error creating voting room:", error);
-            Dashboard.alert("Error creating voting room");
+            svAlert(this.i18n.t("msg.errorCreatingRoom"));
         }
     }
 
@@ -166,7 +661,7 @@ class SyncVoteManager {
             this.showVotingInterface();
         } catch (error) {
             console.error("Error joining voting room:", error);
-            Dashboard.alert("Error joining voting room");
+            svAlert(this.i18n.t("msg.errorJoining"));
         }
     }
 
@@ -175,15 +670,29 @@ class SyncVoteManager {
         const votingHtml = this.getVotingInterfaceHtml();
 
         const dialogOptions = {
-            title: `Voting: ${this.currentRoom.Name}`,
+            title: `${this.i18n.t("title")}: ${this.currentRoom.Name}`,
             text: votingHtml,
             html: true,
             size: "large",
             buttons: [],
         };
-
-        Dashboard.alert(dialogOptions);
+        if (typeof Dashboard !== "undefined" && Dashboard.alert) {
+            Dashboard.alert(dialogOptions);
+        }
         this.initializeVotingInterface();
+    }
+
+    async showCurrentResults() {
+        try {
+            if (!this.currentRoom) return;
+            const results = await this.apiClient.ajax({
+                type: "GET",
+                url: this.apiClient.getUrl(`SyncVote/Room/${this.currentRoom.Id}/Results`),
+            });
+            this.showResults(results);
+        } catch (e) {
+            console.error("Error fetching current results", e);
+        }
     }
 
     getVotingInterfaceHtml() {
@@ -262,25 +771,44 @@ class SyncVoteManager {
     }
 
     async loadNextMovie() {
-        // In real implementation, this would fetch filtered movies from Jellyfin API
-        // For now, we'll simulate with sample data
-        this.currentMovie = this.getNextMovie();
+        try {
+            if (!this._candidates || this._candidateIndex >= this._candidates.length) {
+                const sortBy = this.currentRoom?.SortBy || "Random";
+                const query = {
+                    IncludeItemTypes: "Movie",
+                    Recursive: true,
+                    Limit: 50,
+                    Fields: "Genres,ProductionYear,PrimaryImageAspectRatio",
+                };
+                if (sortBy === "Title") {
+                    query.SortBy = "SortName";
+                    query.SortOrder = "Ascending";
+                } else if (sortBy === "CommunityRating") {
+                    query.SortBy = "CommunityRating";
+                    query.SortOrder = "Descending";
+                } else if (sortBy === "PremiereDate") {
+                    query.SortBy = "PremiereDate";
+                    query.SortOrder = "Descending";
+                } else {
+                    query.SortBy = "Random";
+                }
+                const url = this.apiClient.getUrl("Items", query);
+                const res = await this.apiClient.ajax({ type: "GET", url });
+                this._candidates = res?.Items || [];
+                this._candidateIndex = 0;
+            }
 
-        if (this.currentMovie) {
-            document.getElementById("movieTitle").textContent = this.currentMovie.Name;
-            document.getElementById("movieDetails").textContent = `${this.currentMovie.ProductionYear} • ${this.currentMovie.Genres?.join(", ") || "Unknown"}`;
-            document.getElementById("movieImage").src = this.apiClient.getImageUrl(this.currentMovie.Id, { type: "Primary", maxWidth: 300 });
+            this.currentMovie = this._candidates[this._candidateIndex++] || null;
+            if (this.currentMovie) {
+                document.getElementById("movieTitle").textContent = this.currentMovie.Name || "";
+                const year = this.currentMovie.ProductionYear ? `${this.currentMovie.ProductionYear}` : "";
+                const genres = this.currentMovie.Genres && this.currentMovie.Genres.length ? this.currentMovie.Genres.join(", ") : "";
+                document.getElementById("movieDetails").textContent = [year, genres].filter(Boolean).join(" • ");
+                document.getElementById("movieImage").src = this.apiClient.getImageUrl(this.currentMovie.Id, { type: "Primary", maxWidth: 300 });
+            }
+        } catch (e) {
+            console.error("Error loading next item", e);
         }
-    }
-
-    getNextMovie() {
-        // Placeholder - would fetch from Jellyfin library based on room filters
-        return {
-            Id: Guid.newGuid(),
-            Name: "Sample Movie",
-            ProductionYear: 2023,
-            Genres: ["Action", "Adventure"],
-        };
     }
 
     startVotingTimer() {
@@ -321,25 +849,24 @@ class SyncVoteManager {
         const resultsHtml = this.getResultsHtml(results);
 
         const dialogOptions = {
-            title: "Voting Results",
+            title: this.i18n.t("results.title"),
             text: resultsHtml,
             html: true,
             size: "large",
             buttons: [
                 {
-                    name: "Play Winner",
+                    name: this.i18n.t("btn.playWinner"),
                     id: "play",
                     type: "submit",
                 },
                 {
-                    name: "Close",
+                    name: this.i18n.t("btn.close"),
                     id: "close",
                     type: "cancel",
                 },
             ],
         };
-
-        Dashboard.alert(dialogOptions).then((result) => {
+        (typeof Dashboard !== "undefined" && Dashboard.alert ? Dashboard.alert(dialogOptions) : Promise.resolve()).then((result) => {
             if (result === "play" && results.Winner) {
                 this.playWinner(results.Winner);
             }
@@ -348,21 +875,21 @@ class SyncVoteManager {
 
     getResultsHtml(results) {
         if (!results.Winner) {
-            return "<p>No movies received enough votes to win.</p>";
+            return `<p>${this.i18n.t("results.none")}</p>`;
         }
 
         let html = `
             <div class="votingResults">
                 <div class="winner">
-                    <h3>🏆 Winner: ${results.Winner.Name}</h3>
-                    <p>${results.Winner.VoteCount} votes</p>
+                    <h3>🏆 ${this.i18n.t("results.winner")}: ${results.Winner.Name}</h3>
+                    <p>${results.Winner.VoteCount} ${this.i18n.t("votes.word")}</p>
                 </div>
         `;
 
         if (results.LikedItems.length > 1) {
             html += '<div class="otherResults"><h4>Other liked movies:</h4><ul>';
             results.LikedItems.slice(1).forEach((item) => {
-                html += `<li>${item.Name} (${item.VoteCount} votes)</li>`;
+                html += `<li>${item.Name} (${item.VoteCount} ${this.i18n.t("votes.word")})</li>`;
             });
             html += "</ul></div>";
         }
@@ -385,23 +912,45 @@ class SyncVoteManager {
                 contentType: "application/json",
             });
 
-            Dashboard.alert("Starting playback of the winning movie!");
+            svAlert(this.i18n.t("play.starting"));
         } catch (error) {
             console.error("Error starting playback:", error);
-            Dashboard.alert("Error starting playback");
+            svAlert(this.i18n.t("play.error"));
         }
     }
 
-    getCurrentSyncPlayGroupId() {
-        // This would get the current SyncPlay group ID from the SyncPlay API
-        // For demo purposes, return a placeholder
-        return "demo-group-id";
+    async getCurrentSyncPlayGroupId() {
+        try {
+            const userId = await this.apiClient.getCurrentUserId();
+            const url = this.apiClient.getUrl("Sessions");
+            const sessions = await this.apiClient.ajax({ type: "GET", url });
+            const forUser = (sessions || []).filter((s) => s?.UserId?.toLowerCase?.() === (userId || "").toLowerCase());
+            const withGroup = forUser.find((s) => !!s?.SyncPlayGroupId);
+            return withGroup?.SyncPlayGroupId || (forUser[0]?.SyncPlayGroupId ?? null);
+        } catch (e) {
+            return null;
+        }
     }
 }
 
-// Initialize SyncVote when the page loads
-document.addEventListener("DOMContentLoaded", () => {
-    if (window.ApiClient) {
-        new SyncVoteManager();
+// Initialize SyncVote manager even if loaded after DOMContentLoaded
+function initSyncVote() {
+    if (window.__syncVoteManager) return;
+
+    try {
+        window.__syncVoteManager = new SyncVoteManager();
+        console.log("SyncVoteManager initialized");
+    } catch (e) {
+        console.error("Error initializing SyncVoteManager:", e);
     }
+    return;
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+    initSyncVote();
+});
+
+// Also inject when dashboard is loaded (for single page app navigation)
+Events.on(Emby.Page, "pageshow", function () {
+    initSyncVote();
 });
