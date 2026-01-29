@@ -69,6 +69,7 @@ function svAlert(messageOrOptions) {
 
 class SyncVoteManager {
     constructor() {
+        console.log("[SyncVote] Initializing SyncVoteManager");
         this.apiClient = window.ApiClient;
         this.currentRoom = null;
         this.votingTimer = null;
@@ -81,10 +82,12 @@ class SyncVoteManager {
     }
 
     init() {
+        console.log("[SyncVote] Running init(), ApiClient available:", !!this.apiClient);
         // Try to attach controls into SyncPlay UI
         this.addSyncVoteButton();
         // Also attempt once on load, in case already joined
         this.getCurrentSyncPlayGroupId().then((groupId) => {
+            console.log("[SyncVote] Current SyncPlay group:", groupId);
             if (groupId) this.updateSyncVoteControls(groupId);
         });
 
@@ -124,12 +127,18 @@ class SyncVoteManager {
         if (this._menuObserver) return;
         const target = document.body;
         if (!target) return;
+        console.log("[SyncVote] Starting SyncPlay menu observer");
         this._menuObserver = new MutationObserver(async () => {
             try {
-                const sheets = document.querySelectorAll(".actionSheet.syncPlayGroupMenu.opened");
+                // Try multiple selectors for different Jellyfin Web versions
+                // .opened class may not always be present, also try without it
+                const sheets = document.querySelectorAll(".actionSheet.syncPlayGroupMenu.opened, .actionSheet.syncPlayGroupMenu, .dialogContainer .syncPlayGroupMenu");
                 for (const sheet of sheets) {
-                    const scroller = sheet.querySelector(".actionSheetScroller");
+                    // Skip if not visible
+                    if (sheet.offsetParent === null && !sheet.classList.contains("opened")) continue;
+                    const scroller = sheet.querySelector(".actionSheetScroller, .scrollerContainer, .dialogContent");
                     if (!scroller || scroller.querySelector(".svSyncVoteItem")) continue;
+                    console.log("[SyncVote] Found SyncPlay menu, injecting controls");
 
                     // Resolve current group and room/owner
                     const groupId = await this.getCurrentSyncPlayGroupId();
@@ -197,10 +206,15 @@ class SyncVoteManager {
 
     async _tryInjectIntoOpenSheets() {
         try {
-            const sheets = document.querySelectorAll(".actionSheet.syncPlayGroupMenu.opened");
+            // Try multiple selectors for different Jellyfin Web versions
+            const sheets = document.querySelectorAll(".actionSheet.syncPlayGroupMenu.opened, .actionSheet.syncPlayGroupMenu, .dialogContainer .syncPlayGroupMenu");
             for (const sheet of sheets) {
-                const scroller = sheet.querySelector(".actionSheetScroller");
+                // Skip if not visible
+                if (sheet.offsetParent === null && !sheet.classList.contains("opened")) continue;
+                const scroller = sheet.querySelector(".actionSheetScroller, .scrollerContainer, .dialogContent");
                 if (!scroller || scroller.querySelector(".svSyncVoteItem")) continue;
+                console.log("[SyncVote] _tryInjectIntoOpenSheets: Found SyncPlay menu");
+
                 const groupId = await this.getCurrentSyncPlayGroupId();
                 if (!groupId) continue;
                 const rooms = await this.apiClient.ajax({ type: "GET", url: this.apiClient.getUrl("SyncVote/Rooms") }).catch(() => []);
@@ -208,7 +222,6 @@ class SyncVoteManager {
                 this.currentRoom = room;
                 const userId = await this.apiClient.getCurrentUserId();
                 const isOwner = !!room && room.OrganizerId && room.OrganizerId.toLowerCase() === (userId || "").toLowerCase();
-                const perms = await this.apiClient.ajax({ type: "GET", url: this.apiClient.getUrl("SyncVote/Permissions") }).catch(() => ({ CanOrganize: true }));
 
                 if (!room) {
                     this._appendActionItem(scroller, {
@@ -937,20 +950,47 @@ class SyncVoteManager {
 function initSyncVote() {
     if (window.__syncVoteManager) return;
 
+    // Wait for ApiClient to be available
+    if (!window.ApiClient) {
+        console.log("[SyncVote] ApiClient not yet available, retrying in 500ms...");
+        setTimeout(initSyncVote, 500);
+        return;
+    }
+
     try {
         window.__syncVoteManager = new SyncVoteManager();
-        console.log("SyncVoteManager initialized");
+        console.log("[SyncVote] SyncVoteManager initialized successfully");
     } catch (e) {
-        console.error("Error initializing SyncVoteManager:", e);
+        console.error("[SyncVote] Error initializing SyncVoteManager:", e);
     }
     return;
 }
 
-document.addEventListener("DOMContentLoaded", function () {
+// Try to initialize immediately if DOM is ready
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function () {
+        console.log("[SyncVote] DOMContentLoaded fired");
+        initSyncVote();
+    });
+} else {
+    console.log("[SyncVote] DOM already loaded, initializing now");
     initSyncVote();
-});
+}
 
 // Also inject when dashboard is loaded (for single page app navigation)
-Events.on(Emby.Page, "pageshow", function () {
-    initSyncVote();
-});
+try {
+    if (typeof Events !== "undefined" && typeof Emby !== "undefined" && Emby.Page) {
+        Events.on(Emby.Page, "pageshow", function () {
+            initSyncVote();
+        });
+    }
+} catch (e) {
+    console.log("[SyncVote] Emby.Page events not available, using fallback");
+}
+
+// Fallback: periodically check if we need to reinitialize
+setInterval(function () {
+    if (!window.__syncVoteManager && window.ApiClient) {
+        initSyncVote();
+    }
+}, 2000);

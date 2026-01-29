@@ -66,7 +66,8 @@ Write-Host "  Checksum: $checksum" -ForegroundColor Gray
 
 # Step 6: Update manifest.json
 Write-Host "[6/7] Updating manifest.json..." -ForegroundColor Yellow
-$manifest = Get-Content "manifest.json" | ConvertFrom-Json
+$manifestContent = Get-Content "manifest.json" -Raw
+$manifest = $manifestContent | ConvertFrom-Json
 $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
 # Get repo URL from git remote
@@ -74,7 +75,7 @@ $repoUrl = git remote get-url origin
 $repoUrl = $repoUrl -replace '\.git$', ''
 $repoUrl = $repoUrl -replace 'git@github.com:', 'https://github.com/'
 
-$newVersion = @{
+$newVersion = [PSCustomObject]@{
     version = $Version
     timestamp = $timestamp
     targetAbi = "10.10.0.0"
@@ -84,9 +85,11 @@ $newVersion = @{
 }
 
 # Add new version at the beginning of versions array
-$manifest[0].versions = @($newVersion) + $manifest[0].versions
+$manifest[0].versions = @($newVersion) + @($manifest[0].versions)
 
-$manifest | ConvertTo-Json -Depth 10 | Set-Content "manifest.json"
+# Force array output with @() and use -AsArray parameter
+$jsonOutput = ConvertTo-Json -InputObject @($manifest) -Depth 10
+Set-Content "manifest.json" -Value $jsonOutput -Encoding UTF8
 
 Write-Host "[7/7] Summary:" -ForegroundColor Green
 Write-Host "  Version: $Version"

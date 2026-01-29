@@ -109,6 +109,51 @@ Sicurezza: tutte le rotte richiedono auth Jellyfin (`[Authorize]`, header client
 - Build: `dotnet build`
 - Test: `dotnet test` (da aggiungere).
 
+## Caricamento Frontend (Web UI)
+
+Il plugin espone le risorse JavaScript/CSS come embedded resources, ma **non le inietta automaticamente** nell'interfaccia web di Jellyfin. Per caricare l'interfaccia di SyncVote nel Web Client, hai due opzioni:
+
+### Opzione 1: File Transformation Plugin (consigliato)
+
+1. Installa il plugin [File Transformation](https://github.com/IAmParadox27/jellyfin-plugin-file-transformation)
+2. Vai nelle impostazioni del plugin File Transformation
+3. Aggiungi una trasformazione:
+   - **Filename Pattern**: `index.html`
+   - **Search String**: `</body>`
+   - **Replace String**:
+     ```html
+     <script src="/web/configurationpage?name=syncvote.js"></script>
+     <link rel="stylesheet" href="/web/configurationpage?name=syncvote.css">
+     </body>
+     ```
+
+### Opzione 2: Custom JavaScript Plugin
+
+1. Installa un plugin Custom JavaScript (es. [johnpc/jellyfin-plugin-custom-javascript](https://github.com/johnpc/jellyfin-plugin-custom-javascript))
+2. Nelle impostazioni del plugin, aggiungi questo codice:
+   ```javascript
+   (function() {
+       var link = document.createElement('link');
+       link.rel = 'stylesheet';
+       link.href = '/web/configurationpage?name=syncvote.css';
+       document.head.appendChild(link);
+
+       var script = document.createElement('script');
+       script.src = '/web/configurationpage?name=syncvote.js';
+       document.body.appendChild(script);
+   })();
+   ```
+
+### Verifica
+
+Dopo la configurazione, riavvia Jellyfin e apri la console del browser (F12). Dovresti vedere:
+```
+[SyncVote] Initializing SyncVoteManager
+[SyncVote] SyncVoteManager initialized successfully
+```
+
+Una volta caricato, i controlli SyncVote appariranno nel menu del gruppo SyncPlay.
+
 ## Contributi
 
 - PR benvenute. Usa branch per feature, descrivi scenario e aggiungi test quando possibile.
