@@ -1,28 +1,30 @@
-{
-    "name": "SyncVote",
-    "guid": "6bfde2dd-8211-4964-b86d-7812a9de160b",
-    "framework": "net8.0",
-    "description": "A plugin to choose what to watch with your friends using votes.",
-    "overview": "Choose together what to watch before starting a watch party.",
-    "owner": "KappuCitti",
-    "category": "General",
-    "imageUrl": "https://raw.githubusercontent.com/KappuCitti/kappucitti-plugin-syncvote/master/images/logo.png",
-    "versions": [
-        {
-            "timestamp": "2026-01-27T23:36:22Z",
-            "sourceUrl": "https://github.com/KappuCitti/kappucitti-plugin-syncvote/releases/download/0.0.0.2/0.0.0.2-SyncVote.zip",
-            "checksum": "dbb7e421fa70483b3e40869d948bc8d3",
-            "version": "0.0.0.2",
-            "targetAbi": "10.10.0.0",
-            "changelog": "See release notes on GitHub"
-        },
-        {
-            "version": "0.0.0.1",
-            "timestamp": "2025-09-05T00:00:00Z",
-            "targetAbi": "10.10.0.0",
-            "sourceUrl": "https://github.com/KappuCitti/kappucitti-plugin-syncvote/releases/download/0.0.0.1/0.0.0.1-SyncVote.zip",
-            "checksum": "1cb71f9af32fe440131a5f2271fb9220",
-            "changelog": "- Initial preview release (MVP scaffolding)\n- Backend API: rooms/join/start/vote/results/permissions\n- Config page and mock web assets\n- VS Code build-and-copy tasks\n"
-        }
-    ]
-}
+[
+    {
+        "name": "SyncVote",
+        "guid": "6bfde2dd-8211-4964-b86d-7812a9de160b",
+        "framework": "net8.0",
+        "description": "A plugin to choose what to watch with your friends using votes.",
+        "overview": "Choose together what to watch before starting a watch party.",
+        "owner": "KappuCitti",
+        "category": "General",
+        "imageUrl": "https://raw.githubusercontent.com/KappuCitti/kappucitti-plugin-syncvote/master/images/logo.png",
+        "versions": [
+            {
+                "timestamp": "2026-01-27T23:36:22Z",
+                "sourceUrl": "https://github.com/KappuCitti/kappucitti-plugin-syncvote/releases/download/0.0.0.2/0.0.0.2-SyncVote.zip",
+                "checksum": "dbb7e421fa70483b3e40869d948bc8d3",
+                "version": "0.0.0.2",
+                "targetAbi": "10.10.0.0",
+                "changelog": "See release notes on GitHub"
+            },
+            {
+                "version": "0.0.0.1",
+                "timestamp": "2025-09-05T00:00:00Z",
+                "targetAbi": "10.10.0.0",
+                "sourceUrl": "https://github.com/KappuCitti/kappucitti-plugin-syncvote/releases/download/0.0.0.1/0.0.0.1-SyncVote.zip",
+                "checksum": "1cb71f9af32fe440131a5f2271fb9220",
+                "changelog": "- Initial preview release (MVP scaffolding)\n- Backend API: rooms/join/start/vote/results/permissions\n- Config page and mock web assets\n- VS Code build-and-copy tasks\n"
+            }
+        ]
+    }
+]
