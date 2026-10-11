@@ -9,8 +9,8 @@
     // On Windows this usually is ${env:LOCALAPPDATA}/jellyfin
     "jellyfinDataDir": "${env:LOCALAPPDATA}/jellyfin",
 
-    // Solution file name (at repo root)
-    "pluginSolution": "SyncVote.sln",
+    // Jellyfin version the plugin is compiled against: 10.10.x, 10.11.x or 12.x
+    "jellyfinVersion": "10.10.7",
     // Project directory name that outputs the DLL
     "pluginProjectDir": "KappuCitti.Plugin.SyncVote",
     // Installation directory under Jellyfin's plugins folder

@@ -1,164 +1,123 @@
-# SyncVote (Jellyfin Plugin)
+# SyncVote (Jellyfin plugin)
 
-Plugin open source per decidere in gruppo cosa guardare con SyncPlay, tramite votazioni stile swipe (tipo Tinder). Questo README copre obiettivi, flusso, API, sviluppo e roadmap, allineati ad AGENTS.md.
+Decide together what to watch. When a group is in a SyncPlay session, the organizer opens a voting room, everybody swipes
+(like / dislike) through the same list of titles, and the winner starts playing for the whole group.
 
-## Obiettivo
+The screens are the Jellyfin ones (same dialogs and components), in English or Italian: the server picks the language.
 
-- Scegliere insieme: gli utenti in una sessione SyncPlay votano film/serie da una lista filtrata.
-- Organizzazione semplice: l’organizzatore crea/aggancia la stanza, avvia la votazione e il vincitore parte in SyncPlay.
-- Permessi e filtri: controlli su chi può organizzare/votare, filtri per raccolte/genere/ordinamento.
+## Compatibility
 
-## Flusso (Schema “puro SyncPlay”)
+Jellyfin plugins are not binary compatible across server generations, so SyncVote ships one build per generation.
+The catalog of your server offers the right one by itself.
 
-- Crea gruppo → `POST /SyncPlay/New` (salva `groupId`).
-- Gli utenti entrano → `POST /SyncPlay/Join`.
-- Il plugin gestisce la votazione “swipe” su titoli filtrati (raccolta/genere/ordinamento).
-- Al termine: queue/play del vincitore sul gruppo SyncPlay; gestione stato con `SyncPlay/Playstate`.
+| Jellyfin | Plugin version | `targetAbi` | Built on |
+|---|---|---|---|
+| 12.x | `X.Y.Z.2` | 12.0.0.0 | .NET 10 |
+| 10.11.x | `X.Y.Z.1` | 10.11.0.0 | .NET 9 |
+| 10.10.x | `X.Y.Z.0` | 10.10.0.0 | .NET 8 |
 
-UI attesa:
-- Dopo aver cliccato SyncPlay, l’organizzatore vede “Organizza una votazione”.
-- Dopo l’avvio, tutti vedono “Unisciti al voto” e il pannello di swipe.
+The 4th digit grows with the Jellyfin generation, so a server never offers a build made for an older one.
+Jellyfin 10.9 is not tested. Jellyfin 10.8 and older are **not supported**: the plugin needs `IPluginServiceRegistrator`,
+which appeared in 10.9.
 
-## Stato attuale (MVP API + modello dati)
+## Installation
 
-- API: creazione stanza, join, start voting, vote like/dislike, results, permissions.
-- Modelli: `VotingRoom`, `Vote`, `UserPermissions`.
-- Config: pagina impostazioni con tempo limite, stanze pubbliche, auto-start, ordinamento default.
-- Frontend: mock `Web/syncvote.js` e `Web/syncvote.css` (non ancora collegati alla UI Jellyfin).
+1. Dashboard → Plugins → Repositories → add
+   `https://raw.githubusercontent.com/KappuCitti/kappucitti-plugin-syncvote/master/manifest.json`
+2. Install **SyncVote** from the catalog and restart the server.
 
-## Cosa manca (priorità)
+Nothing else is needed: the plugin adds its own script to the web client. If you load it with another plugin (File
+Transformation, Custom JavaScript), turn off *Add SyncVote to the web interface* in the plugin settings.
 
-1) Feed contenuti + filtri
-   - Query a libreria Jellyfin (raccolte/genere/sort) via `ILibraryManager`/queries.
-   - API per ottenere il prossimo candidato per la stanza.
-2) Allineamento SortBy
-   - Uniformare enum/valori tra UI/config e capacità di sorting di Jellyfin.
-3) Integrazione SyncPlay (server-side)
-   - Su vincitore, queue/play nel gruppo SyncPlay corrente.
-4) Controlli accesso
-   - Rilevare membri senza accesso al candidato/vincitore; avvisare l’organizzatore.
-5) Aggiornamenti real-time
-   - WebSocket per stato stanza, voti e risultati.
-6) Persistenza
-   - Salvare stanze/voti/permessi oltre il runtime (file in `IApplicationPaths` o DB).
-7) UI wiring
-   - Target iniziale: Web Client; iniezione pulsanti e overlay di voto.
+## Using it
 
-## Ordinamenti e filtri (proposta MVP)
+1. Everybody joins the same SyncPlay group.
+2. Open the SyncPlay menu (top bar) and pick **SyncVote**.
+3. The organizer creates the room: name, at least one library folder, optional genres, maximum age rating, time limit and
+   order. A voting round has a time limit and ends by itself.
+4. Members open the same menu entry and join. The organizer starts the voting when everybody is in (or the server does it
+   when all the SyncPlay members joined, if *Auto-start voting* is on).
+5. Everybody likes or dislikes the titles: buttons, ← / → keys or a swipe. Titles are the same, in the same order, for
+   everyone, and only include what *every* member is allowed to see.
+6. When the time is up (or the organizer ends it with the stop icon in the header) the results appear. The organizer can
+   play the winner in the SyncPlay group, start a new round or close the room.
 
-- Ordinamenti: Random, Title A‑Z, Title Z‑A, CommunityRating, CriticRating, DateAdded, PremiereDate.
-- Filtri: per libreria/collezione selezionata e/o generi; tipo contenuti iniziale Movies/Series.
+## Settings (Dashboard → Plugins → SyncVote)
 
-## API (bozza)
+| Option | Meaning |
+|---|---|
+| Default time limit, default order | Starting values of the create form |
+| Max room members | Limit of members per room |
+| Language | `Same as the server` (default), English, Italiano |
+| Show every room to everyone | When off, users only see the rooms they belong to or the one of their SyncPlay group |
+| Auto-start voting | Start when every SyncPlay member joined the room |
+| Users can organize / vote | Defaults; administrators can always do both. Per-user exceptions go in the `UserPermissionOverrides` list of the plugin configuration file |
+| Add SyncVote to the web interface | Turn off when another plugin loads the script |
 
-- `POST /SyncVote/Room`: crea stanza.
-- `GET /SyncVote/Rooms`: stanze attive.
-- `GET /SyncVote/Room/{roomId}`: dettagli stanza.
-- `POST /SyncVote/Room/{roomId}/Join`: join utente.
-- `POST /SyncVote/Room/{roomId}/StartVoting`: avvia votazione (solo organizzatore).
-- `GET /SyncVote/Room/{roomId}/NextItem`: prossimo candidato secondo filtri/sort.
-- `POST /SyncVote/Vote`: like/dislike su un item.
-- `GET /SyncVote/Room/{roomId}/Results`: stato e vincitore/classifica.
-- `GET /SyncVote/Permissions[?userId]`: permessi utente.
+## API
 
-Sicurezza: tutte le rotte richiedono auth Jellyfin (`[Authorize]`, header client/device/version/token).
+Everything needs a Jellyfin-authenticated user, except the client files.
 
-## Modelli dati (principali)
+| Endpoint | |
+|---|---|
+| `POST /SyncVote/Room` | Create a room for the SyncPlay group of the caller (needs permission, at least one library) |
+| `GET /SyncVote/Rooms`, `GET /SyncVote/Room/{id}` | Rooms the caller may see |
+| `POST /SyncVote/Room/{id}/Join` | Join (idempotent) |
+| `POST /SyncVote/Room/{id}/StartVoting`, `…/EndVoting` | Organizer only |
+| `DELETE /SyncVote/Room/{id}` | Close (organizer or administrator) |
+| `GET /SyncVote/Room/{id}/Candidates?skip=&limit=` | Titles still to vote on, filtered, visible to all members, same order for all |
+| `POST /SyncVote/Vote` | `{ RoomId, ItemId, IsLike }` |
+| `GET /SyncVote/Room/{id}/Results` | Ranking and winner; how many members cannot access the winner |
+| `POST /SyncVote/Room/{id}/PlayWinner` | Organizer only: queue and play the winner in the SyncPlay group |
+| `GET /SyncVote/SyncPlayInfo` | SyncPlay group of the caller |
+| `POST /SyncVote/CheckAccess` | Do the other group members see these library folders? (yes/no only) |
+| `GET /SyncVote/Permissions[?userId]` | Own permissions (another user's: administrators) |
+| `GET /SyncVote/Library/Collections`, `…/Genres`, `…/ParentalRatings` | Data for the create form |
+| `GET /SyncVote/Client/syncvote.js`, `…/syncvote.css`, `…/i18n` | Client files and translations (public) |
 
-- `VotingRoom`: id, nome, syncPlayGroupId, organizerId, membri, stato, timer, `SortBy`, filtri (raccolte/generi).
-- `Vote`: id, roomId, userId, itemId, isLike, timestamp.
-- `UserPermissions`: userId, `CanOrganize`, `CanVote`.
+## How it works
 
-## Architettura
+- `Plugin` + `PluginServiceRegistrator`: the plugin and its services (`VotingRoomService`, `LibraryService`, `SyncPlayService`).
+- `VotingRoomService`: rooms and votes, in memory (rooms are short-lived), thread-safe. The voting time limit is enforced here.
+- `LibraryService`: queries the Jellyfin library (filters, per-member visibility, ordering). `SyncPlayService`: finds the group
+  of a user and plays the winner through `ISyncPlayManager`.
+- `WebClientInjectionMiddleware`: adds the script to the web client's `index.html` while it is served.
+- `Web/syncvote.js`: the client. It adds an entry to the SyncPlay menu and opens Jellyfin-style dialogs.
+- `Compat/`: the few types Jellyfin moved between versions, selected at compile time (`JELLYFIN_10_10`, `JELLYFIN_10_11`, `JELLYFIN_12`).
 
-- `SyncVoteController`: espone API e usa `VotingRoomService`.
-- `VotingRoomService`: gestisce stanze/voti, feed candidati (via `ILibraryManager`), regole e risultati.
-- `Plugin`: implementa `IHasWebPages` e fornisce pagina di configurazione.
-- Asset web (mock): `Web/syncvote.js` e `Web/syncvote.css`.
+## Development
 
-## Integrazione SyncPlay (server-side)
+Requirements: PowerShell 7, the .NET SDKs of the generations you build (8 for 10.10, 9 for 10.11, 10 for 12; the newest SDK builds them all).
 
-- Associare un `groupId` SyncPlay alla stanza.
-- Su vincitore: enqueue/play nel gruppo; eventuale gestione pause/seek via `SyncPlay/Playstate`.
-
-## Persistenza
-
-- Interfaccia storage per stanze/voti/permessi.
-- MVP: file JSON nel percorso dati di `IApplicationPaths` del plugin (snapshot + write‑through).
-
-## Configurazione e permessi
-
-- Server: tempo limite (default 5 min), ordinamento predefinito, stanze pubbliche, auto‑start.
-- Per utente (plugin): “Può organizzare votazioni”, “Può votare”.
-- Coerenza GUID tra plugin e manifest: mantenere lo stesso GUID in `KappuCitti.Plugin.SyncVote/Plugin.cs`, in `Configuration/configPage.html` (costante `pluginId`) e in `manifest.json`.
-
-## Roadmap (sintesi)
-
-- [ ] Feed contenuti + `NextItem`.
-- [ ] Allineamento `SortBy` UI/Config/Backend.
-- [ ] WebSocket real‑time.
-- [ ] Integrazione SyncPlay (enqueue/play vincitore).
-- [ ] Controlli accesso e warning organizer.
-- [ ] Persistenza dati su disco.
-- [ ] UI Web: pulsanti + overlay swipe.
-- [ ] Test unitari/integrati di base.
-
-## Sviluppo
-
-- Requisiti: .NET 8 SDK, Jellyfin 10.9+ per test manuali.
-- Build: `dotnet build`
-- Test: `dotnet test` (da aggiungere).
-
-## Caricamento Frontend (Web UI)
-
-Il plugin espone le risorse JavaScript/CSS come embedded resources, ma **non le inietta automaticamente** nell'interfaccia web di Jellyfin. Per caricare l'interfaccia di SyncVote nel Web Client, hai due opzioni:
-
-### Opzione 1: File Transformation Plugin (consigliato)
-
-1. Installa il plugin [File Transformation](https://github.com/IAmParadox27/jellyfin-plugin-file-transformation)
-2. Vai nelle impostazioni del plugin File Transformation
-3. Aggiungi una trasformazione:
-   - **Filename Pattern**: `index.html`
-   - **Search String**: `</body>`
-   - **Replace String**:
-     ```html
-     <script src="/web/configurationpage?name=syncvote.js"></script>
-     <link rel="stylesheet" href="/web/configurationpage?name=syncvote.css">
-     </body>
-     ```
-
-### Opzione 2: Custom JavaScript Plugin
-
-1. Installa un plugin Custom JavaScript (es. [johnpc/jellyfin-plugin-custom-javascript](https://github.com/johnpc/jellyfin-plugin-custom-javascript))
-2. Nelle impostazioni del plugin, aggiungi questo codice:
-   ```javascript
-   (function() {
-       var link = document.createElement('link');
-       link.rel = 'stylesheet';
-       link.href = '/web/configurationpage?name=syncvote.css';
-       document.head.appendChild(link);
-
-       var script = document.createElement('script');
-       script.src = '/web/configurationpage?name=syncvote.js';
-       document.body.appendChild(script);
-   })();
-   ```
-
-### Verifica
-
-Dopo la configurazione, riavvia Jellyfin e apri la console del browser (F12). Dovresti vedere:
-```
-[SyncVote] Initializing SyncVoteManager
-[SyncVote] SyncVoteManager initialized successfully
+```powershell
+dotnet test KappuCitti.Plugin.SyncVote.Tests                                     # unit tests, no server needed
+dotnet build KappuCitti.Plugin.SyncVote -p:JellyfinVersion=10.10.7               # one generation (10.10.x, 10.11.x, 12.x)
+./build.ps1 -ReleaseVersion 0.2.0                                                # tests + all generations -> artifacts/*.zip
+./release.ps1 -Version 0.2.0                                                     # build.ps1 + manifest.json (nothing pushed without -Push)
 ```
 
-Una volta caricato, i controlli SyncVote appariranno nel menu del gruppo SyncPlay.
+`tests/e2e` has end-to-end scripts that drive a real Jellyfin server (API, the real web client in headless Chrome, plugin
+options); see its README. Use a test server, never a production one.
 
-## Contributi
+Each zip holds only `KappuCitti.Plugin.SyncVote.dll`; Jellyfin provides everything else. Keep the plugin GUID identical in
+`Plugin.cs`, `Configuration/configPage.html` and `manifest.json`.
 
-- PR benvenute. Usa branch per feature, descrivi scenario e aggiungi test quando possibile.
-- Stile: mantieni coerenza con i plugin Jellyfin, evita complessità non necessaria.
+## Roadmap
 
-## Licenza
+- [x] Candidate feed with library, genre, age-rating and order filters
+- [x] Voting with a server-side time limit, ranking, winner played in SyncPlay
+- [x] Access checks (library folders before creating, winner after voting)
+- [x] Automatic web client integration, Jellyfin-style UI, English and Italian
+- [ ] Real-time updates over WebSocket (the client polls every 2 seconds now)
+- [ ] Persistence of rooms across restarts (rooms are short-lived by design)
+- [ ] Series and episodes in the voting UI (the server already supports them)
+- [ ] Other clients than the web one
 
-MIT. Vedi `LICENSE`.
+## Contributing
+
+Pull requests are welcome: one branch per feature, describe the scenario and add tests when you can. Keep the code in
+line with other Jellyfin plugins and avoid needless complexity.
+
+## License
+
+MIT. See `LICENSE`.

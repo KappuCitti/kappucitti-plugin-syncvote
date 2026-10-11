@@ -10,13 +10,18 @@
             "dependsOn": ["build", "make-plugin-dir", "copy-dll"]
         },
         {
-            // Build the plugin
+            // Build the plugin for the Jellyfin version set in settings.json
             "label": "build",
             "command": "dotnet",
             "type": "shell",
             "args": [
                 "publish",
-                "${workspaceFolder}/${config:pluginSolution}",
+                "${workspaceFolder}/${config:pluginProjectDir}",
+                "-c",
+                "Debug",
+                "-p:JellyfinVersion=${config:jellyfinVersion}",
+                "-o",
+                "${workspaceFolder}/artifacts/dev",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary"
             ],
@@ -24,6 +29,15 @@
             "presentation": {
                 "reveal": "silent"
             },
+            "problemMatcher": "$msCompile"
+        },
+        {
+            // Unit tests (they do not depend on the Jellyfin version)
+            "label": "test",
+            "command": "dotnet",
+            "type": "shell",
+            "args": ["test", "${workspaceFolder}/KappuCitti.Plugin.SyncVote.Tests"],
+            "group": "test",
             "problemMatcher": "$msCompile"
         },
         {
@@ -38,13 +52,12 @@
             ]
         },
         {
-            // Copy the plugin dll to the jellyfin plugin install path
-            // Copies every file from the publish output (DLL + deps) to the plugin dir
+            // Copy the plugin dll to the jellyfin plugin install path (the server provides every other dll)
             "label": "copy-dll",
             "type": "shell",
             "command": "cp",
             "args": [
-                "./${config:pluginProjectDir}/bin/Debug/net8.0/publish/*",
+                "${workspaceFolder}/artifacts/dev/${config:pluginProjectDir}.dll",
                 "${config:jellyfinDataDir}/plugins/${config:pluginInstallDirName}/"
             ]
         }

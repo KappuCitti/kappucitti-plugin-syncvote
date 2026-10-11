@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      # Unit tests, then the plugin for every supported Jellyfin generation (nothing is published).
+      - name: Test and build
+        shell: pwsh
+        run: ./build.ps1 -ReleaseVersion 0.0.0

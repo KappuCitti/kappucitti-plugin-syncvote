@@ -1,19 +1,18 @@
+# Build output (also the per-Jellyfin-version folders: obj/jf<version>, bin/jf<version>)
 bin/
 obj/
+publish/
+artifacts/
+TestResults/
+*.trx
+
+# IDE and editor user files (the shared .vscode tasks and settings stay in the repo)
 .vs/
 .idea/
-artifacts
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
 *.suo
-*.ntvs*
-*.njsproj
+*.user
 *.sw?
-.env
+.DS_Store
 
-# Other
-publish/
+# Local secrets
+.env

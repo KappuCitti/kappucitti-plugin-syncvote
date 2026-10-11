@@ -7,9 +7,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version number (e.g., 0.0.0.2)'
+        description: 'Release number (e.g., 0.2.0). The builds get 0.2.0.0 (Jellyfin 10.10), 0.2.0.1 (10.11), 0.2.0.2 (12)'
         required: true
         type: string
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -21,88 +24,61 @@ jobs:
         with:
           fetch-depth: 0
 
+      # One SDK per Jellyfin generation: 10.10 builds on .NET 8, 10.11 on .NET 9, 12 on .NET 10.
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
 
       - name: Determine version
         id: version
+        shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
+            TAG="${{ github.event.inputs.version }}"
           else
-            VERSION="${GITHUB_REF#refs/tags/}"
+            TAG="${GITHUB_REF#refs/tags/}"
           fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Building version: $VERSION"
+          # The release number is the first three digits; the fourth one is added per Jellyfin generation.
+          if [[ "$TAG" =~ ^v?([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+          else
+            echo "Tag '$TAG' does not look like X.Y.Z"; exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building release $VERSION (tag $TAG)"
 
-      - name: Update AssemblyVersion
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          sed -i "s/<AssemblyVersion>.*<\/AssemblyVersion>/<AssemblyVersion>$VERSION<\/AssemblyVersion>/" KappuCitti.Plugin.SyncVote/KappuCitti.Plugin.SyncVote.csproj
-          sed -i "s/<FileVersion>.*<\/FileVersion>/<FileVersion>$VERSION<\/FileVersion>/" KappuCitti.Plugin.SyncVote/KappuCitti.Plugin.SyncVote.csproj
-
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Build
-        run: dotnet publish KappuCitti.Plugin.SyncVote/KappuCitti.Plugin.SyncVote.csproj -c Release -o ./publish
-
-      - name: Create plugin zip
-        run: |
-          cd publish
-          zip -r "../${{ steps.version.outputs.version }}-SyncVote.zip" .
-          cd ..
-
-      - name: Calculate checksum
-        id: checksum
-        run: |
-          CHECKSUM=$(md5sum "${{ steps.version.outputs.version }}-SyncVote.zip" | awk '{ print $1 }')
-          echo "checksum=$CHECKSUM" >> $GITHUB_OUTPUT
-          echo "Checksum: $CHECKSUM"
-
-      - name: Update manifest.json
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          CHECKSUM="${{ steps.checksum.outputs.checksum }}"
-          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          REPO_URL="https://github.com/${{ github.repository }}"
-
-          # Use jq to update manifest
-          jq --arg ver "$VERSION" \
-             --arg ts "$TIMESTAMP" \
-             --arg cs "$CHECKSUM" \
-             --arg url "$REPO_URL/releases/download/$VERSION/$VERSION-SyncVote.zip" \
-             '.[0].versions = [{
-               "version": $ver,
-               "timestamp": $ts,
-               "targetAbi": "10.10.0.0",
-               "sourceUrl": $url,
-               "checksum": $cs,
-               "changelog": "See release notes"
-             }] + .[0].versions' manifest.json > manifest_new.json
-          mv manifest_new.json manifest.json
+      # Runs the unit tests, builds the plugin for every supported Jellyfin generation,
+      # packs one zip each (the plugin dll only) and adds them to manifest.json.
+      - name: Test, build and update the manifest
+        shell: pwsh
+        run: >
+          ./build.ps1
+          -ReleaseVersion "${{ steps.version.outputs.version }}"
+          -UpdateManifest
+          -DownloadBaseUrl "${{ github.server_url }}/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4.6.0
         with:
           name: syncvote-plugin
-          path: ${{ steps.version.outputs.version }}-SyncVote.zip
+          path: artifacts/*.zip
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.version }}
+          tag_name: ${{ steps.version.outputs.tag }}
           name: SyncVote v${{ steps.version.outputs.version }}
-          files: ${{ steps.version.outputs.version }}-SyncVote.zip
+          files: artifacts/*.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Commit updated manifest
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
