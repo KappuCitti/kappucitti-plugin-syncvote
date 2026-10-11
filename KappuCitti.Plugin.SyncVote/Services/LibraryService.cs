@@ -18,6 +18,7 @@ namespace KappuCitti.Plugin.SyncVote.Services;
 public class LibraryService : IItemInfoProvider
 {
     private static readonly TimeSpan CandidateCacheLifetime = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan GenreCacheLifetime = TimeSpan.FromMinutes(2);
     private static readonly BaseItemKind[] VotableKinds = { BaseItemKind.Movie, BaseItemKind.Series, BaseItemKind.Episode };
     private const int MaxEpisodesToQueue = 200;
 
@@ -26,6 +27,7 @@ public class LibraryService : IItemInfoProvider
     private readonly ILogger<LibraryService> _logger;
     private readonly object _cacheLock = new();
     private readonly Dictionary<Guid, CachedCandidates> _candidateCache = new();
+    private readonly Dictionary<Guid, CachedGenres> _genreCache = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="LibraryService"/> class.
@@ -125,7 +127,16 @@ public class LibraryService : IItemInfoProvider
     /// <returns>The sorted genre names.</returns>
     public IReadOnlyList<string> GetGenres(JfUser user)
     {
-        return _libraryManager.GetItemList(new InternalItemsQuery(user)
+        // Reading every title is the heaviest call of the create form, and genres hardly change: keep the answer for a moment.
+        lock (_cacheLock)
+        {
+            if (_genreCache.TryGetValue(user.Id, out var cached) && cached.ExpiresAt > DateTime.UtcNow)
+            {
+                return cached.Genres;
+            }
+        }
+
+        var genres = _libraryManager.GetItemList(new InternalItemsQuery(user)
             {
                 IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Series },
                 Recursive = true,
@@ -136,6 +147,13 @@ public class LibraryService : IItemInfoProvider
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(g => g, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
+
+        lock (_cacheLock)
+        {
+            _genreCache[user.Id] = new CachedGenres(DateTime.UtcNow + GenreCacheLifetime, genres);
+        }
+
+        return genres;
     }
 
     /// <summary>
@@ -421,6 +439,8 @@ public class LibraryService : IItemInfoProvider
         _logger.LogDebug("Candidate query for room {RoomId}: {Kinds}", room.Id, string.Join(',', query.IncludeItemTypes.Select(k => k.ToString())));
         return query;
     }
+
+    private sealed record CachedGenres(DateTime ExpiresAt, IReadOnlyList<string> Genres);
 
     private sealed record CachedCandidates(string MemberKey, DateTime ExpiresAt, IReadOnlyList<Guid> Ids);
 }

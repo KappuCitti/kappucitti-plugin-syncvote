@@ -26,6 +26,8 @@ public class SyncVoteController : ControllerBase
     private readonly SyncPlayService _syncPlay;
     private readonly IUserManager _userManager;
     private readonly IPluginSettings _settings;
+    private SyncPlayGroup? _group;
+    private bool _groupLoaded;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SyncVoteController"/> class.
@@ -51,7 +53,20 @@ public class SyncVoteController : ControllerBase
 
     private Guid CurrentUserId => User.GetUserId();
 
-    private SyncPlayGroup? CurrentGroup => _syncPlay.FindGroup(CurrentUserId, User.GetDeviceId());
+    // Looked up once per request: it asks SyncPlay, and several checks need it.
+    private SyncPlayGroup? CurrentGroup
+    {
+        get
+        {
+            if (!_groupLoaded)
+            {
+                _group = _syncPlay.FindGroup(CurrentUserId, User.GetDeviceId());
+                _groupLoaded = true;
+            }
+
+            return _group;
+        }
+    }
 
     /// <summary>
     /// Creates a new voting room for the SyncPlay group of the current user.

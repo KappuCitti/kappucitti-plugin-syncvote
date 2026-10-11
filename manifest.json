@@ -2,7 +2,6 @@
     {
         "name": "SyncVote",
         "guid": "6bfde2dd-8211-4964-b86d-7812a9de160b",
-        "framework": "net8.0",
         "description": "A plugin to choose what to watch with your friends using votes.",
         "overview": "Choose together what to watch before starting a watch party.",
         "owner": "KappuCitti",

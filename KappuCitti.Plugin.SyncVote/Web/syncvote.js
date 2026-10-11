@@ -209,6 +209,11 @@
         }
     }
 
+    // "1 vote", "3 votes"
+    function votes(count) {
+        return count + " " + t(count === 1 ? "votes.one" : "votes.word");
+    }
+
     function listItem(icon, primary, secondary) {
         return '<div class="listItem listItem-border"><span class="listItemIcon material-icons ' + icon + '" aria-hidden="true"></span><div class="listItemBody"><div class="listItemBodyText">' + esc(primary) + "</div>" + (secondary ? '<div class="listItemBodyText secondary">' + esc(secondary) + "</div>" : "") + "</div></div>";
     }
@@ -824,7 +829,7 @@
             self.current = self.queue.shift() || null;
             var count = document.getElementById("svVotesCount");
             if (count) {
-                count.textContent = t("voting.cast", self.votes);
+                count.textContent = t(self.votes === 1 ? "voting.cast.one" : "voting.cast", self.votes);
             }
             if (!self.current) {
                 card.innerHTML = '<div class="svPosterBox"></div><div class="svCardText"><div class="fieldDescription">' + esc(t("voting.noMore")) + "</div></div>";
@@ -916,7 +921,7 @@
                 } else {
                     var winner = results.Winner;
                     html += '<h2 class="sectionTitle">' + esc(t("results.winner")) + "</h2>";
-                    html += listItem("emoji_events", winner.Name + (winner.Year ? " (" + winner.Year + ")" : ""), winner.VoteCount + " " + t("votes.word"));
+                    html += listItem("emoji_events", winner.Name + (winner.Year ? " (" + winner.Year + ")" : ""), votes(winner.VoteCount));
                     if (organizer && results.MembersWithoutAccess > 0) {
                         html += '<div class="fieldDescription" style="color:#ffc107"><span class="material-icons" style="vertical-align:middle">warning</span> ' + esc(t("results.accessIssue", results.MembersWithoutAccess)) + "</div>";
                     }
@@ -924,7 +929,7 @@
                         html += '<h2 class="sectionTitle">' + esc(t("results.others")) + "</h2>";
                         html += results.LikedItems.slice(1, 11)
                             .map(function (i) {
-                                return listItem("thumb_up", i.Name, i.VoteCount + " " + t("votes.word"));
+                                return listItem("thumb_up", i.Name, votes(i.VoteCount));
                             })
                             .join("");
                     }
