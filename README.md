@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-blue.svg"></a>
   <img alt="Jellyfin 10.10, 10.11 and 12" src="https://img.shields.io/badge/Jellyfin-10.10%20%7C%2010.11%20%7C%2012-00a4dc.svg">
   <a href="https://github.com/KappuCitti/kappucitti-plugin-syncvote/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/KappuCitti/kappucitti-plugin-syncvote?include_prereleases"></a>
 </p>
@@ -190,4 +190,4 @@ It only appears when your server has Jellyfin collections (box sets). Create one
 
 ## License
 
-[MIT](LICENSE).
+[GNU General Public License v3.0](LICENSE).
