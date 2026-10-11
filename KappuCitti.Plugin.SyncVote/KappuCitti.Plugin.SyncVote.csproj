@@ -9,7 +9,6 @@
     <NoWarn>$(NoWarn);CA2227;CA1002;CA2007;CS1591;CA1819;CA1815;CA1000;CA1859;CA1873</NoWarn>
     <Nullable>enable</Nullable>
     <AnalysisMode>AllEnabledByDefault</AnalysisMode>
-    <CodeAnalysisRuleSet>../jellyfin.ruleset</CodeAnalysisRuleSet>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <!-- Build output lives in obj/jf<version>: keep every obj/bin folder out of the compile globs. -->
