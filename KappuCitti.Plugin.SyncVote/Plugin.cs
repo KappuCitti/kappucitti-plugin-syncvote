@@ -41,37 +41,14 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     /// <inheritdoc />
     public IEnumerable<PluginPageInfo> GetPages()
     {
-        // Expose the configuration page and web assets (js/css) for client-side UI.
-        // NOTE: To load the JS/CSS in Jellyfin Web, use the "File Transformation" plugin
-        // or "Custom JavaScript" plugin to inject the script tag.
-        var ns = GetType().Namespace;
+        // Only the admin page lives here. The client script, style and translations are served by
+        // ClientAssetsController and added to the web client by WebClientInjectionMiddleware.
         return new[]
         {
             new PluginPageInfo
             {
-                Name = this.Name,
-                EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Configuration.configPage.html", ns)
-            },
-            new PluginPageInfo
-            {
-                Name = "syncvote.js",
-                EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Web.syncvote.js", ns)
-            },
-            new PluginPageInfo
-            {
-                Name = "syncvote.css",
-                EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Web.syncvote.css", ns)
-            },
-            // i18n bundles for web pages
-            new PluginPageInfo
-            {
-                Name = "i18n/en.json",
-                EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Web.i18n.en.json", ns)
-            },
-            new PluginPageInfo
-            {
-                Name = "i18n/it.json",
-                EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Web.i18n.it.json", ns)
+                Name = Name,
+                EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Configuration.configPage.html", GetType().Namespace)
             }
         };
     }

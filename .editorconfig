@@ -136,6 +136,9 @@ dotnet_naming_style.pascal_case_style.capitalization = pascal_case
 # C# Coding Conventions       #
 ###############################
 [*.cs]
+# Unused usings are noise: the build reports them so they get removed
+dotnet_diagnostic.IDE0005.severity = warning
+
 # var preferences
 csharp_style_var_for_built_in_types = true:silent
 csharp_style_var_when_type_is_apparent = true:silent
@@ -192,3 +195,4 @@ csharp_space_between_method_call_empty_parameter_list_parentheses = false
 # Wrapping preferences
 csharp_preserve_single_line_statements = true
 csharp_preserve_single_line_blocks = true
+

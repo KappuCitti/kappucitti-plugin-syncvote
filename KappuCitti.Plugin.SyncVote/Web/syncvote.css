@@ -1,425 +1,294 @@
-/* SyncVote Plugin Styles */
+/* SyncVote - the dialogs use Jellyfin's own classes (formDialog, emby-*); only what Jellyfin does not have is styled here. */
 
-.syncVoteButton,
-.joinVoteButton {
-    margin: 10px 5px;
-    background: linear-gradient(135deg, #00a4dc, #0078d4);
-    border: none;
-    color: white;
-    padding: 10px 20px;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.2s ease;
+/* Jellyfin leaves a large empty strip below the content of a dialog: it only causes scrolling here. */
+.svDialog .dialogContentInner {
+    padding-bottom: 1.5em;
 }
 
-.syncVoteButton:hover,
-.joinVoteButton:hover {
-    background: linear-gradient(135deg, #0078d4, #005a9e);
-    transform: translateY(-1px);
+.svError {
+    margin: 0 0 1em;
+    padding: 0.7em 1em;
+    border-radius: 0.3em;
+    background: rgba(220, 53, 69, 0.18);
+    color: #ff8a8a;
 }
 
-.votingInterface {
-    max-width: 400px;
-    margin: 0 auto;
+/* Jellyfin lays its footer over the end of the content (and pads the content to make up for it). In these dialogs the footer is a
+   normal part of the flex column instead, so the content gets exactly the space that is left. */
+.svDialog .formDialogFooter {
+    position: static;
+    flex: none;
+}
+
+/* The create form uses the whole dialog: full width, and the lists grow with the height of the screen. */
+.svDialog .svCreateBody {
+    max-width: none;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.svCreateBody .svForm {
+    max-width: none;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.svCreateBody .svColumns {
+    flex: 1;
+    min-height: 14em;
+}
+
+.svCreateBody .svColumns > div {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.svCreateBody .svScroll {
+    flex: 1;
+    max-height: none;
+    min-height: 6em;
+}
+
+.svRow2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14em, 1fr));
+    gap: 0 1.5em;
+}
+
+.svDialog .svScroll {
+    max-height: 180px;
+    overflow-y: auto;
+    margin-bottom: 1em;
+}
+
+.svToast {
+    position: fixed;
+    left: 50%;
+    bottom: 40px;
+    transform: translateX(-50%);
+    z-index: 2000000; /* Jellyfin dialogs are at 999999 */
+    max-width: 90vw;
+    padding: 0.8em 1.4em;
+    border-radius: 0.4em;
+    background: #323232;
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.svVoting {
     text-align: center;
 }
 
-.votingHeader {
-    margin-bottom: 20px;
+.svTimer {
+    margin-bottom: 0.4em;
 }
 
-.timeRemaining {
-    font-size: 24px;
-    font-weight: bold;
-    color: #00a4dc;
-    margin-bottom: 10px;
-}
-
-.progress {
-    width: 100%;
+.svProgress {
     height: 4px;
-    background: #e0e0e0;
+    margin-bottom: 1em;
     border-radius: 2px;
+    background: rgba(128, 128, 128, 0.3);
     overflow: hidden;
 }
 
-.progressBar {
+.svProgressBar {
     height: 100%;
-    background: linear-gradient(90deg, #00a4dc, #0078d4);
-    transition: width 0.3s ease;
-}
-
-.movieCard {
-    background: #f8f9fa;
-    border-radius: 12px;
-    padding: 20px;
-    margin: 20px 0;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.moviePoster img {
-    max-width: 200px;
-    max-height: 300px;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.movieInfo {
-    margin-top: 15px;
-}
-
-.movieInfo h3 {
-    margin: 0 0 10px 0;
-    font-size: 20px;
-    color: #333;
-}
-
-.movieInfo p {
-    margin: 0;
-    color: #666;
-    font-size: 14px;
-}
-
-.votingButtons {
-    display: flex;
-    justify-content: center;
-    gap: 30px;
-    margin: 30px 0;
-}
-
-.voteButton {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    border: none;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-    transition: all 0.2s ease;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
-
-.voteButton:hover {
-    transform: scale(1.1);
-}
-
-.voteButton:active {
-    transform: scale(0.95);
-}
-
-.voteButton.like {
-    background: linear-gradient(135deg, #28a745, #20c997);
-    color: white;
-}
-
-.voteButton.dislike {
-    background: linear-gradient(135deg, #dc3545, #e74c3c);
-    color: white;
-}
-
-.votingStats {
-    color: #666;
-    font-size: 14px;
-    margin-top: 20px;
-}
-
-.votingResults {
-    text-align: center;
-}
-
-.winner {
-    background: linear-gradient(135deg, #ffd700, #ffed4e);
-    padding: 20px;
-    border-radius: 12px;
-    margin-bottom: 20px;
-    color: #333;
-}
-
-.winner h3 {
-    margin: 0 0 10px 0;
-    font-size: 24px;
-}
-
-.otherResults {
-    background: #f8f9fa;
-    padding: 15px;
-    border-radius: 8px;
-    text-align: left;
-}
-
-.otherResults h4 {
-    margin: 0 0 10px 0;
-    color: #333;
-}
-
-.otherResults ul {
-    margin: 0;
-    padding-left: 20px;
-}
-
-.otherResults li {
-    margin-bottom: 5px;
-    color: #666;
-}
-
-/* Responsive design */
-@media (max-width: 480px) {
-    .votingInterface {
-        padding: 10px;
-    }
-
-    .moviePoster img {
-        max-width: 150px;
-        max-height: 225px;
-    }
-
-    .votingButtons {
-        gap: 20px;
-    }
-
-    .voteButton {
-        width: 50px;
-        height: 50px;
-        font-size: 20px;
-    }
-}
-
-/* Dark theme support */
-@media (prefers-color-scheme: dark) {
-    .movieCard {
-        background: #2d3748;
-        color: white;
-    }
-
-    .movieInfo h3 {
-        color: white;
-    }
-
-    .movieInfo p {
-        color: #a0aec0;
-    }
-
-    .otherResults {
-        background: #2d3748;
-        color: white;
-    }
-
-    .otherResults h4 {
-        color: white;
-    }
-
-    .otherResults li {
-        color: #a0aec0;
-    }
-}
-
-/* SyncVote Dialog Styles */
-.sv-dialog-content {
-    max-width: 600px;
-}
-
-.sv-section {
-    margin: 20px 0;
-    padding: 15px;
-    background: rgba(0, 0, 0, 0.03);
-    border-radius: 8px;
-}
-
-.sv-section-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 0 0 8px 0;
-    font-size: 16px;
-    font-weight: 600;
-    color: #00a4dc;
-}
-
-.sv-section-title .material-icons {
-    font-size: 20px;
-}
-
-.sv-section-desc {
-    margin: 0 0 12px 0;
-    font-size: 13px;
-    color: #666;
-}
-
-.sv-checkbox-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 8px;
-    max-height: 200px;
-    overflow-y: auto;
-    padding: 4px;
-}
-
-.sv-genres-grid {
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-}
-
-.sv-checkbox-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    background: rgba(255, 255, 255, 0.8);
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    font-size: 14px;
-}
-
-.sv-checkbox-item:hover {
-    background: rgba(0, 164, 220, 0.1);
-    border-color: #00a4dc;
-}
-
-.sv-checkbox-item input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
-    margin: 0;
-    cursor: pointer;
-    accent-color: #00a4dc;
-}
-
-.sv-checkbox-item input[type="checkbox"]:checked + span {
-    font-weight: 600;
-    color: #00a4dc;
-}
-
-.sv-item-count {
-    margin-left: auto;
-    font-size: 12px;
-    color: #888;
-}
-
-.sv-genre-item {
-    padding: 6px 10px;
-}
-
-.sv-more-genres {
-    display: contents;
-}
-
-.sv-show-more-btn {
-    margin-top: 10px;
-    padding: 8px 16px;
-    background: transparent;
-    border: 1px solid #00a4dc;
-    border-radius: 4px;
-    color: #00a4dc;
-    cursor: pointer;
-    font-size: 13px;
-    transition: all 0.2s ease;
-}
-
-.sv-show-more-btn:hover {
     background: #00a4dc;
-    color: white;
+    transition: width 0.25s linear;
 }
 
-.sv-filters-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 15px;
+.svCard {
+    touch-action: pan-y;
+    user-select: none;
 }
 
-.sv-filter-item {
-    flex: 1;
-    min-width: 140px;
+/* Fixed-size poster slot with a shimmer until the image is there: the text below never jumps. */
+.svPosterBox {
+    position: relative;
+    height: clamp(120px, 34vh, 300px);
+    aspect-ratio: 2 / 3;
+    margin: 0 auto 1em;
+    border-radius: 0.3em;
+    overflow: hidden;
+    background: rgba(128, 128, 128, 0.25);
 }
 
-.sv-filter-item label {
-    display: block;
-    margin-bottom: 5px;
-    font-size: 13px;
-    font-weight: 500;
-}
-
-.sv-filter-item select {
+.svPoster {
+    position: absolute;
+    inset: 0;
     width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.2s;
 }
 
-.sv-access-warning {
+.svNoPoster {
+    position: absolute;
+    inset: 0;
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 12px 15px;
-    background: #fff3cd;
-    border: 1px solid #ffc107;
-    border-radius: 8px;
-    margin-bottom: 15px;
-    color: #856404;
-    font-size: 14px;
+    justify-content: center;
+    font-size: 4em;
+    opacity: 0.4;
 }
 
-.sv-access-warning .material-icons {
-    color: #ffc107;
-    font-size: 24px;
+.svPosterBox.svLoaded .svPoster {
+    opacity: 1;
 }
 
-.sv-info-bar {
+.svSkeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14), transparent);
+    animation: svShimmer 1.2s infinite;
+}
+
+.svSkeleton.svLoaded::after {
+    display: none;
+}
+
+@keyframes svShimmer {
+    from {
+        transform: translateX(-100%);
+    }
+
+    to {
+        transform: translateX(100%);
+    }
+}
+
+.svSkeletonBar {
+    height: 1em;
+    margin: 0.7em auto;
+    border-radius: 0.3em;
+    background: rgba(128, 128, 128, 0.25);
+}
+
+/* Room for a two-line title, the details and a three-line overview, whatever the title. */
+.svCardText {
+    min-height: 7.5em;
+}
+
+.svTitle {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 2.6em;
+}
+
+.svOverview {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 4.2em;
+}
+
+/* The voting view never scrolls: everything is sized from the screen height. */
+.svVotingDialog .formDialogContent {
+    overflow: hidden;
+}
+
+.svVotingDialog .svVoting .sectionTitle {
+    margin: 0.2em 0;
+}
+
+.svVotingDialog .svProgress {
+    margin-bottom: 0.6em;
+}
+
+.svVotingDialog .formDialogFooter {
+    padding: 0.6em 0;
+}
+
+.svEnd {
+    margin-left: auto;
+}
+
+/* Create form: less height on wide screens. */
+.svColumns,
+.svSelects {
+    display: block;
+}
+
+@media (min-width: 720px) {
+    .svColumns {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(16em, 1fr));
+        gap: 1.5em;
+    }
+
+    .svSelects {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1em;
+    }
+}
+
+.svVoteButtons {
     display: flex;
+    justify-content: center;
     align-items: center;
-    gap: 8px;
-    padding: 10px 15px;
-    background: rgba(0, 164, 220, 0.1);
-    border-radius: 6px;
-    margin-top: 15px;
-    color: #00a4dc;
-    font-size: 13px;
+    gap: 3em;
+    width: 100%;
+    margin: 0;
 }
 
-.sv-info-bar .material-icons {
-    font-size: 18px;
+.svVote {
+    margin: 0;
+    width: 3.6em;
+    height: 3.6em;
+    border-radius: 50%;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
-.sv-empty {
-    color: #888;
-    font-style: italic;
-    text-align: center;
-    padding: 20px;
+.svLike {
+    background: #2e9e4f;
 }
 
-/* Dark theme support for dialog */
-@media (prefers-color-scheme: dark) {
-    .sv-section {
-        background: rgba(255, 255, 255, 0.05);
+.svDislike {
+    background: #c0392b;
+}
+
+.svDialog .formDialogFooterItem {
+    margin: 0.4em auto;
+}
+
+
+
+/* Not much height: poster on the left, text on the right. */
+@media (max-height: 820px) {
+    .svCard {
+        display: flex;
+        align-items: flex-start;
+        gap: 1em;
+        text-align: left;
     }
 
-    .sv-section-desc {
-        color: #a0aec0;
+    .svPosterBox {
+        flex: none;
+        height: clamp(110px, 32vh, 200px);
+        margin: 0;
     }
 
-    .sv-checkbox-item {
-        background: rgba(255, 255, 255, 0.08);
-        border-color: #4a5568;
-        color: #e2e8f0;
+    .svCardText {
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
     }
 
-    .sv-checkbox-item:hover {
-        background: rgba(0, 164, 220, 0.2);
-    }
-
-    .sv-item-count {
-        color: #718096;
-    }
-
-    .sv-access-warning {
-        background: rgba(255, 193, 7, 0.15);
-        border-color: rgba(255, 193, 7, 0.5);
-        color: #ffc107;
-    }
-
-    .sv-info-bar {
-        background: rgba(0, 164, 220, 0.15);
-    }
-
-    .sv-empty {
-        color: #718096;
+    .svTitle,
+    .svOverview {
+        min-height: 0;
     }
 }

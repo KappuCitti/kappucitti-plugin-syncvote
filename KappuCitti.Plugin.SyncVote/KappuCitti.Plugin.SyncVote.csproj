@@ -1,37 +1,68 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
     <RootNamespace>KappuCitti.Plugin.SyncVote</RootNamespace>
-    <AssemblyVersion>0.0.0.3</AssemblyVersion>
-    <FileVersion>0.0.0.3</FileVersion>
+    <!-- Release number; the build script overrides it (-p:ReleaseVersion=1.2.3). The 4th digit is added below. -->
+    <ReleaseVersion Condition="'$(ReleaseVersion)' == ''">0.1.0</ReleaseVersion>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <NoWarn>$(NoWarn);CA2227;CA1002;CA2007</NoWarn>
+    <NoWarn>$(NoWarn);CA2227;CA1002;CA2007;CS1591;CA1819;CA1815;CA1000;CA1859;CA1873</NoWarn>
     <Nullable>enable</Nullable>
     <AnalysisMode>AllEnabledByDefault</AnalysisMode>
     <CodeAnalysisRuleSet>../jellyfin.ruleset</CodeAnalysisRuleSet>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Build output lives in obj/jf<version>: keep every obj/bin folder out of the compile globs. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <!-- JellyfinVersion (see Directory.Build.props) selects target framework, package versions and #if symbols. -->
+  <!-- Jellyfin 10.8 and older cannot be supported: IPluginServiceRegistrator, which the plugin needs, appeared in 10.9. -->
+  <PropertyGroup Condition="$(JellyfinVersion.StartsWith('10.9.')) or $(JellyfinVersion.StartsWith('10.10.'))">
+    <TargetFramework>net8.0</TargetFramework>
+    <DefineConstants>$(DefineConstants);JELLYFIN_10_10</DefineConstants>
+    <TargetAbi>10.10.0.0</TargetAbi>
+    <AbiIndex>0</AbiIndex>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(JellyfinVersion.StartsWith('10.11.'))">
+    <TargetFramework>net9.0</TargetFramework>
+    <DefineConstants>$(DefineConstants);JELLYFIN_10_11</DefineConstants>
+    <TargetAbi>10.11.0.0</TargetAbi>
+    <AbiIndex>1</AbiIndex>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(JellyfinVersion.StartsWith('12.'))">
+    <TargetFramework>net10.0</TargetFramework>
+    <DefineConstants>$(DefineConstants);JELLYFIN_12</DefineConstants>
+    <TargetAbi>12.0.0.0</TargetAbi>
+    <AbiIndex>2</AbiIndex>
+  </PropertyGroup>
+
+  <!--
+    The version must grow with the Jellyfin generation it targets (…0 = 10.10, …1 = 10.11, …2 = 12): the plugin catalog of a server
+    offers the highest version whose targetAbi it satisfies, so every server ends up with the build made for it.
+  -->
+  <PropertyGroup>
+    <AssemblyVersion>$(ReleaseVersion).$(AbiIndex)</AssemblyVersion>
+    <FileVersion>$(ReleaseVersion).$(AbiIndex)</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Jellyfin.Controller" Version="10.10.7" />
-    <PackageReference Include="Jellyfin.Model" Version="10.10.7" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.*" />
+    <!-- The server provides these at runtime (also for what they pull in): compile against them, never ship them. -->
+    <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinVersion)">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Jellyfin.Model" Version="$(JellyfinVersion)">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Configuration\configPage.html" />
     <EmbeddedResource Include="Web\**\*" />
-    <EmbeddedResource Include="images\logo.png" Condition="Exists('images\logo.png')" />
   </ItemGroup>
 
+  <Target Name="ValidateJellyfinVersion" BeforeTargets="PrepareForBuild" Condition="'$(TargetFramework)' == ''">
+    <Error Text="Unsupported JellyfinVersion '$(JellyfinVersion)'. Use 10.10.x, 10.11.x or 12.x." />
+  </Target>
+
 </Project>
-
-
-
-
-

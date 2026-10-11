@@ -3,8 +3,6 @@
     <head>
         <meta charset="utf-8" />
         <title>SyncVote Configuration</title>
-        <link rel="stylesheet" href="syncvote.css" />
-        <script src="syncvote.js"></script>
     </head>
     <body>
         <div id="SyncVoteConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
@@ -46,6 +44,18 @@
                             </div>
                         </div>
 
+                        <div class="verticalSection">
+                            <div class="selectContainer">
+                                <label class="selectLabel" for="Language" data-i18n="config.language">Language</label>
+                                <select is="emby-select" id="Language" name="Language">
+                                    <option value="Auto" data-i18n="config.language.auto">Same as the server</option>
+                                    <option value="en">English</option>
+                                    <option value="it">Italiano</option>
+                                </select>
+                                <div class="fieldDescription" data-i18n="config.language.desc">Language of the SyncVote screens. By default it follows the display language of the server.</div>
+                            </div>
+                        </div>
+
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label>
                                 <input is="emby-checkbox" type="checkbox" id="AllowPublicRooms" name="AllowPublicRooms" />
@@ -62,21 +72,42 @@
                             <div class="fieldDescription" data-i18n="config.autoStart.desc">Automatically start voting when all room members have joined</div>
                         </div>
 
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label>
+                                <input is="emby-checkbox" type="checkbox" id="DefaultCanOrganize" name="DefaultCanOrganize" />
+                                <span data-i18n="config.defaultCanOrganize">Users can organize voting rooms</span>
+                            </label>
+                            <div class="fieldDescription" data-i18n="config.defaultCanOrganize.desc">Administrators can always organize. Per-user exceptions can be set in the plugin configuration file.</div>
+                        </div>
+
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label>
+                                <input is="emby-checkbox" type="checkbox" id="DefaultCanVote" name="DefaultCanVote" />
+                                <span data-i18n="config.defaultCanVote">Users can vote</span>
+                            </label>
+                        </div>
+
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label>
+                                <input is="emby-checkbox" type="checkbox" id="InjectWebClient" name="InjectWebClient" />
+                                <span data-i18n="config.injectWebClient">Add SyncVote to the web interface</span>
+                            </label>
+                            <div class="fieldDescription" data-i18n="config.injectWebClient.desc">The plugin adds its own script to the Jellyfin web client. Turn off only if you load it with another plugin. Takes effect on the next page load.</div>
+                        </div>
+
                         <div>
-                            <button is="emby-button" type="submit" class="raised button-submit block">
-                                <span data-i18n="btn.save">Save</span>
+                            <button is="emby-button" type="submit" class="raised button-submit block">                                <span data-i18n="btn.save">Save</span>
                             </button>
                         </div>
                     </form>
                 </div>
             </div>
-        </div>
+        
 
         <script type="text/javascript">
             (function () {
                 // Keep this GUID in sync with Plugin.Id and manifest.json
                 var pluginId = "6bfde2dd-8211-4964-b86d-7812a9de160b";
-                var pluginIdNoDash = pluginId.replace(/-/g, '');
 
                 // Minimal i18n for config page
                 var i18n = {
@@ -84,17 +115,13 @@
                     t: function (key) { return (this.dict && this.dict[key]) || null; }
                 };
 
+                // The server picks the language: its own display language, or the one chosen in this page.
                 function loadI18n() {
-                    var nav = (navigator.language || (navigator.languages && navigator.languages[0]) || 'en').toLowerCase();
-                    var base = nav.split('-')[0];
-                    var url = ApiClient.getUrl('web/PluginResources', { pluginId: pluginIdNoDash, name: 'i18n/' + base + '.json' });
-                    var urlFallback = ApiClient.getUrl('web/PluginResources', { pluginId: pluginIdNoDash, name: 'i18n/en.json' });
-                    return fetch(url, { cache: 'no-store' }).then(function (res) {
-                        if (!res.ok) throw new Error('i18n not found');
-                        return res.json();
+                    return fetch(ApiClient.getUrl('SyncVote/Client/i18n'), { cache: 'no-store' }).then(function (res) {
+                        return res.ok ? res.json() : {};
                     }).catch(function () {
-                        return fetch(urlFallback, { cache: 'no-store' }).then(function (res) { return res.ok ? res.json() : {}; });
-                    }).then(function (dict) { i18n.dict = dict || {}; applyI18n(); });
+                        return {};
+                    }).then(function (result) { i18n.dict = result.Strings || {}; applyI18n(); });
                 }
 
                 function applyI18n() {
@@ -118,8 +145,12 @@
                         var supported = ["Random","Title","CommunityRating","PremiereDate"];
                         if (supported.indexOf(sort) === -1) sort = "Random";
                         document.getElementById("DefaultSortBy").value = sort;
+                        document.getElementById("Language").value = config.Language || "Auto";
                         document.getElementById("AllowPublicRooms").checked = config.AllowPublicRooms !== false;
                         document.getElementById("AutoStartVoting").checked = config.AutoStartVoting === true;
+                        document.getElementById("DefaultCanOrganize").checked = config.DefaultCanOrganize !== false;
+                        document.getElementById("DefaultCanVote").checked = config.DefaultCanVote !== false;
+                        document.getElementById("InjectWebClient").checked = config.InjectWebClient !== false;
                         Dashboard.hideLoadingMsg();
                     });
                 });
@@ -132,8 +163,12 @@
                         config.DefaultTimeLimit = parseInt(document.getElementById("DefaultTimeLimit").value);
                         config.MaxRoomMembers = parseInt(document.getElementById("MaxRoomMembers").value);
                         config.DefaultSortBy = document.getElementById("DefaultSortBy").value;
+                        config.Language = document.getElementById("Language").value;
                         config.AllowPublicRooms = document.getElementById("AllowPublicRooms").checked;
                         config.AutoStartVoting = document.getElementById("AutoStartVoting").checked;
+                        config.DefaultCanOrganize = document.getElementById("DefaultCanOrganize").checked;
+                        config.DefaultCanVote = document.getElementById("DefaultCanVote").checked;
+                        config.InjectWebClient = document.getElementById("InjectWebClient").checked;
 
                         ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);
@@ -144,5 +179,6 @@
                 });
             })();
         </script>
+        </div>
     </body>
 </html>

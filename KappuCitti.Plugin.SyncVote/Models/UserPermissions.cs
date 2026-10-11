@@ -15,7 +15,7 @@ public class UserPermissions
     /// <summary>
     /// Gets or sets a value indicating whether the user can organize voting rooms.
     /// </summary>
-    public bool CanOrganize { get; set; } = false;
+    public bool CanOrganize { get; set; } = true;
 
     /// <summary>
     /// Gets or sets a value indicating whether the user can vote.
