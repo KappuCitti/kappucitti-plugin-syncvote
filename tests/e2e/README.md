@@ -9,6 +9,7 @@ temporary user (`svtest`, removed at the end), SyncPlay groups and rooms, and ch
 | `ui-test.ps1` | The real web client in headless Chrome: the SyncPlay menu entry (and that the menu closes), creating a room, lobby, voting (buttons, keyboard), timer, layout without scrolling at several heights, results, "play the winner". Saves screenshots |
 | `config-test.ps1` | The settings page, the injection switch, permissions, member limit, private rooms, language selection |
 | `new-server.ps1` | Creates an isolated Jellyfin server from the official portable zip (admin `root`/`root`, a library of 30 fake movies with genres, or your own folder of movies with `-MediaPath`). It only ever stops the server that uses its own data folder |
+| `catalog-test.ps1` | Installs SyncVote from the **published** plugin catalog on an isolated server and checks that the server gets the package made for its Jellyfin generation. Then run `api-test.ps1` on it |
 | `install-plugin.ps1` | Builds the plugin for a Jellyfin version, copies it into the test server and restarts it |
 
 > [!WARNING]
