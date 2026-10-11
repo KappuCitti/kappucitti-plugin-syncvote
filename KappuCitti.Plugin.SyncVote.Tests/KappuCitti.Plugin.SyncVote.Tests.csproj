@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <NoWarn>$(NoWarn);CA1707;CA1861;CS1591;xUnit2029</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <!-- The plugin is compiled against Jellyfin 10.10 here (net8.0); the logic under test does not depend on the version. -->
+    <PackageReference Include="Jellyfin.Model" Version="10.10.7" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+  </ItemGroup>
+
+  <!-- The code under test does not depend on the Jellyfin version: it is compiled here from the plugin sources. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Compile Include="..\KappuCitti.Plugin.SyncVote\Models\*.cs" LinkBase="Plugin\Models" />
+    <Compile Include="..\KappuCitti.Plugin.SyncVote\Configuration\PluginConfiguration.cs" LinkBase="Plugin\Configuration" />
+    <Compile Include="..\KappuCitti.Plugin.SyncVote\Api\Dtos.cs" LinkBase="Plugin\Api" />
+    <Compile Include="..\KappuCitti.Plugin.SyncVote\Services\VotingRoomService.cs" LinkBase="Plugin\Services" />
+    <Compile Include="..\KappuCitti.Plugin.SyncVote\Services\IItemInfoProvider.cs" LinkBase="Plugin\Services" />
+    <Compile Include="..\KappuCitti.Plugin.SyncVote\Services\IPluginSettings.cs" LinkBase="Plugin\Services" />
+    <Compile Include="..\KappuCitti.Plugin.SyncVote\Services\OperationResult.cs" LinkBase="Plugin\Services" />
+    <Compile Include="..\KappuCitti.Plugin.SyncVote\Infrastructure\WebClientInjectionMiddleware.cs" LinkBase="Plugin\Infrastructure" />
+    <Compile Include="..\KappuCitti.Plugin.SyncVote\Infrastructure\Localization.cs" LinkBase="Plugin\Infrastructure" />
+    <Compile Include="..\KappuCitti.Plugin.SyncVote\Infrastructure\TitleMatcher.cs" LinkBase="Plugin\Infrastructure" />
+  </ItemGroup>
+
+</Project>
