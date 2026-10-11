@@ -15,10 +15,10 @@ function Find-Browser {
     return @($candidates)[0]
 }
 
-function Start-Chrome($profileDir, $port = 9333) {
+function Start-Chrome($profileDir, $port = 9333, $lang = $null) {
     Remove-Item -Recurse -Force $profileDir -ErrorAction SilentlyContinue
     $chrome = Find-Browser
-    $script:chromeProc = Start-Process $chrome -PassThru -ArgumentList @("--headless=new", "--disable-gpu", "--window-size=1100,900", "--user-data-dir=$profileDir", "--remote-debugging-port=$port", "--remote-allow-origins=*", "about:blank")
+    $script:chromeProc = Start-Process $chrome -PassThru -ArgumentList (@("--headless=new", "--disable-gpu", "--window-size=1100,900", "--user-data-dir=$profileDir", "--remote-debugging-port=$port", "--remote-allow-origins=*", "about:blank") + $(if ($lang) { @("--lang=$lang", "--accept-lang=$lang") } else { @() }))
     for ($i = 0; $i -lt 30; $i++) {
         Start-Sleep -Milliseconds 500
         try { $targets = Invoke-RestMethod "http://127.0.0.1:$port/json" -TimeoutSec 2; break } catch { }

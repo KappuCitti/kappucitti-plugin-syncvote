@@ -8,8 +8,13 @@ temporary user (`svtest`, removed at the end), SyncPlay groups and rooms, and ch
 | `api-test.ps1` | The HTTP API: authentication, permissions, library, real SyncPlay, room life cycle, votes, ranking, the winner started in SyncPlay, filters and ordering |
 | `ui-test.ps1` | The real web client in headless Chrome: the SyncPlay menu entry (and that the menu closes), creating a room, lobby, voting (buttons, keyboard), timer, layout without scrolling at several heights, results, "play the winner". Saves screenshots |
 | `config-test.ps1` | The settings page, the injection switch, permissions, member limit, private rooms, language selection |
-| `new-server.ps1` | Creates an isolated Jellyfin server from the official portable zip (admin `root`/`root`, a library of 30 fake movies with genres) |
+| `new-server.ps1` | Creates an isolated Jellyfin server from the official portable zip (admin `root`/`root`, a library of 30 fake movies with genres, or your own folder of movies with `-MediaPath`). It only ever stops the server that uses its own data folder |
 | `install-plugin.ps1` | Builds the plugin for a Jellyfin version, copies it into the test server and restarts it |
+
+> [!WARNING]
+> `ui-test.ps1` and `config-test.ps1` can switch the display language of the **server** for a moment, to check that the screens
+> follow it. They only do it with `-ChangeServerLanguage` (and put it back): use that switch on a test server nobody is using.
+> `api-test.ps1` creates a temporary collection and removes it (and the "Collections" library Jellyfin creates for it) at the end.
 
 The tests expect an administrator (`root`/`root` by default, see `-AdminUser` and `-AdminPassword`) and at least one movie library.
 

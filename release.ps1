@@ -1,49 +1,63 @@
 <#
 .SYNOPSIS
-    Builds a SyncVote release locally: one build per supported Jellyfin generation, manifest.json updated.
+    Checks that a release can be made and, on request, creates and pushes its tag.
 .DESCRIPTION
-    Runs build.ps1, then (optionally) commits manifest.json, tags the release and creates the GitHub release.
-    Nothing is pushed unless -Push is given.
+    The release itself (zips, GitHub release, manifest.json) is made by the "Build and Release" workflow
+    when the tag is pushed. This script only prepares it:
+      - it refuses to go on when the working tree is dirty, the branch is not the default one or behind
+        the remote, or the tag already exists;
+      - it runs the unit tests and builds every package, to be sure the tag will build (see ./build.ps1);
+      - with -Tag it creates the annotated tag, with -Push it also pushes it, which starts the workflow.
 .PARAMETER Version
-    Release number "X.Y.Z" (a tag such as 0.2.0). The builds get 0.2.0.0 (Jellyfin 10.10), 0.2.0.1 (10.11), 0.2.0.2 (12).
+    Release number "X.Y.Z" (also the tag). Packages get X.Y.Z.0 (Jellyfin 10.10), X.Y.Z.1 (10.11), X.Y.Z.2 (12).
+.PARAMETER Tag
+    Create the tag locally once the checks pass.
 .PARAMETER Push
-    Commit manifest.json, create the tag and push both.
-.PARAMETER CreateRelease
-    With -Push: also create the GitHub release with the zips (needs the gh CLI).
+    Create the tag and push it to origin.
 .EXAMPLE
-    ./release.ps1 -Version 0.2.0
+    ./release.ps1 -Version 0.2.0            # checks only
 .EXAMPLE
-    ./release.ps1 -Version 0.2.0 -Push -CreateRelease
+    ./release.ps1 -Version 0.2.0 -Push      # checks, tag, push
 #>
 param(
     [Parameter(Mandatory = $true)]
     [string]$Version,
 
-    [switch]$Push,
+    [switch]$Tag,
 
-    [switch]$CreateRelease
+    [switch]$Push
 )
 
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-$repoUrl = (git remote get-url origin) -replace '\.git$', '' -replace 'git@github.com:', 'https://github.com/'
-./build.ps1 -ReleaseVersion $Version -UpdateManifest -DownloadBaseUrl "$repoUrl/releases/download/$Version"
+if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Version must look like 1.2.3 (got '$Version')." }
+
+function Fail($message) { throw "Not releasing: $message" }
+
+# Where we are
+$default = ((git symbolic-ref --short refs/remotes/origin/HEAD) -replace '^origin/', '')
+if ((git branch --show-current) -ne $default) { Fail "switch to '$default' first." }
+if (git status --porcelain) { Fail "the working tree has uncommitted changes." }
+git fetch origin --tags --quiet
+if ((git rev-list --count "HEAD..origin/$default") -gt 0) { Fail "'$default' is behind origin: pull first." }
+if (git tag --list $Version) { Fail "the tag $Version already exists." }
+$manifest = @(Get-Content manifest.json -Raw | ConvertFrom-Json)[0]
+if ($manifest.versions | Where-Object { $_.version -like "$Version.*" }) { Fail "manifest.json already lists $Version." }
+
+# Does it build and pass? (nothing is published, the zips go to ./artifacts)
+./build.ps1 -ReleaseVersion $Version
+Write-Host "Checks passed for $Version." -ForegroundColor Green
+
+if ($Tag -or $Push) {
+    git tag -a $Version -m "Release $Version"
+    Write-Host "Created tag $Version." -ForegroundColor Green
+}
 
 if ($Push) {
-    git add manifest.json
-    git commit -m "Release $Version"
-    git tag -a $Version -m "Release $Version"
-    git push origin HEAD --tags
-    if ($CreateRelease) {
-        if (Get-Command gh -ErrorAction SilentlyContinue) {
-            gh release create $Version (Get-ChildItem artifacts -Filter *.zip).FullName --title "SyncVote $Version" --generate-notes
-        }
-        else {
-            Write-Warning "GitHub CLI (gh) not found: upload artifacts/*.zip to the release by hand."
-        }
-    }
+    git push origin $Version
+    Write-Host "Pushed tag ${Version}: the release workflow takes it from here." -ForegroundColor Green
 }
-else {
-    Write-Host "Not pushed. Review 'git diff manifest.json', then run again with -Push (and -CreateRelease)." -ForegroundColor Yellow
+elseif (-not $Tag) {
+    Write-Host "Nothing was tagged. Run again with -Tag, or -Push to start the release." -ForegroundColor Yellow
 }

@@ -9,21 +9,22 @@ param(
     [Parameter(Mandatory)][string]$PluginDll,   # built plugin dll to install, or "" for none
     [string]$PluginVersion = "0.1.0.0",
     [string]$Exe,        # run another jellyfin.exe (e.g. an installed one) against this isolated data folder
-    [string]$WebDir      # web client folder to use with -Exe
+    [string]$WebDir,     # web client folder to use with -Exe
+    [string]$MediaPath   # use this folder of movies (one sub-folder per movie) instead of generating 30 fake ones
 )
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 $exe = if ($Exe) { $Exe } else { "$Root\server\jellyfin\jellyfin.exe" }
 $data = "$Root\data"
-$media = "$Root\media\Movies"
+$media = if ($MediaPath) { $MediaPath } else { "$Root\media\Movies" }
 $base = "http://127.0.0.1:$Port"
 
 # Stop a previous instance of this very server only: the one started with THIS data folder (never another server using the same exe).
 Get-CimInstance Win32_Process -Filter "Name='jellyfin.exe'" | Where-Object { $_.CommandLine -like "*$data*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 Start-Sleep 2
 
-if (-not (Test-Path "$media\Movie 01 (2001)")) {
+if (-not $MediaPath -and -not (Test-Path "$media\Movie 01 (2001)")) {
     $genres = "Action", "Comedy", "Drama"
     1..30 | ForEach-Object {
         $n = "{0:00}" -f $_
@@ -86,12 +87,13 @@ if (-not $info.StartupWizardCompleted) {
     $h = @{ "Authorization" = 'MediaBrowser Client="setup", Device="setup", DeviceId="setup-id", Version="1.0"' }
     $auth = Invoke-RestMethod "$base/Users/AuthenticateByName" -Method Post -Headers $h -ContentType "application/json" -Body '{"Username":"root","Pw":"root"}'
     $h["Authorization"] += ", Token=`"$($auth.AccessToken)`""
+    $expected = if ($MediaPath) { @(Get-ChildItem $MediaPath -Directory).Count } else { 30 }
     $body = @{ LibraryOptions = @{ PathInfos = @(@{ Path = $media }); EnableRealtimeMonitor = $false; MetadataSavers = @(); LocalMetadataReaderOrder = @("Nfo") } } | ConvertTo-Json -Depth 6
     Invoke-RestMethod "$base/Library/VirtualFolders?name=Film&collectionType=movies&refreshLibrary=true" -Method Post -Headers $h -ContentType "application/json" -Body $body | Out-Null
     for ($i = 0; $i -lt 60; $i++) {
         Start-Sleep 2
         $count = (Invoke-RestMethod "$base/Items?Recursive=true&IncludeItemTypes=Movie&Limit=1" -Headers $h).TotalRecordCount
-        if ($count -ge 30) { break }
+        if ($count -ge $expected) { break }
     }
     Write-Host "library ready: $count movies"
 }
