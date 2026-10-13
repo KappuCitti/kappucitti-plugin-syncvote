@@ -39,6 +39,8 @@ It looks and feels like Jellyfin itself (same dialogs, same components) and spea
   libraries (without telling who).
 - **Controls for admins**: who can organize or vote, room size, auto-start, room visibility.
 - **Like, dislike, or just use the keyboard** (← →) or swipe on touch screens.
+- **A room code**, if you want one: anybody in the SyncPlay group can join a room, but only the people who have the 6-digit code
+  can vote. See [Room code](#room-code).
 - **A purple dot** on the SyncPlay button while the group is voting (Jellyfin 12), so nobody misses it.
 
 ## Screenshots
@@ -99,7 +101,7 @@ That is all: the plugin adds its own script to the web client, no other plugin i
 1. Everybody joins the same **SyncPlay group** (the SyncPlay button in the top bar).
 2. Open the SyncPlay menu and pick **SyncVote**.
 3. The organizer creates the room: a name, at least one library folder or collection, and optionally genres, an age rating,
-   a title filter, the time limit and the order.
+   a title filter, the time limit, the order and a [code](#room-code).
 4. The others open the same menu entry and join. When everybody is in, the organizer starts the voting.
 5. Like or dislike each title. The time left is shown on top.
 6. When the time is up (or the organizer stops it with the stop icon in the header) the results appear. The organizer can
@@ -113,6 +115,26 @@ whole list.
 > Turn on **Auto-start voting** in the plugin settings and the round starts as soon as every member of the SyncPlay group has
 > joined the room.
 
+### Room code
+
+Anybody who can use SyncPlay can join a SyncPlay group, and a group has no password. If the server is shared with people you do
+not know, tick **Ask for a code to vote** when you create the room:
+
+- The server makes a **6-digit code**. You (the organizer) and the administrators see it all the time, in the header of the room
+  and, in the lobby, in big digits; click it to copy it. Nobody else is ever shown it.
+- Everybody else can open the room, but has to type the code to be let in. Without it there are no titles to vote on, no results
+  and no votes. A code works at any time: somebody who types it while a round is running can vote in that round.
+- By default the code lasts for **the whole SyncPlay session**: the next room of the group has the same one, and whoever typed it
+  does not type it again. Choose **one round** instead and every new round has a new code (the people of the previous round have
+  to type the new one).
+- Guessing is slowed down: after 7 wrong codes (you can change the number in the settings) the user has to wait 30 seconds, then
+  longer with each mistake. The codes are never obvious ones like `111111` or `123456`.
+
+> [!NOTE]
+> The code keeps out people who happen to be in the group; it is not encryption. If your server is reached over plain `http`,
+> somebody who can see the network traffic can see the code like they could see a password: use `https` (a reverse proxy) if that
+> matters.
+
 ## Settings
 
 Dashboard → Plugins → SyncVote.
@@ -121,6 +143,7 @@ Dashboard → Plugins → SyncVote.
 |:---|:---|
 | Default time limit / default sort order | Starting values of the create form |
 | Max room members | How many people can join a room |
+| Wrong room codes allowed | How many wrong codes a user can type for a room with a [code](#room-code) before they have to wait (7) |
 | Language | `Same as the server` (default), English or Italiano |
 | Show every room to everyone | When off, people only see rooms they are in or the one of their SyncPlay group |
 | Auto-start voting | Start when every SyncPlay member has joined the room |
