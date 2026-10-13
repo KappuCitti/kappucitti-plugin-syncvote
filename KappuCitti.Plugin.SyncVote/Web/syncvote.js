@@ -859,8 +859,14 @@
             return Promise.resolve();
         }
         card.dataset.drag = isLike ? "like" : "dislike";
-        poster.style.transition = "transform " + FLY_MS + "ms ease-in, opacity " + FLY_MS + "ms ease-in";
-        poster.style.transform = "translateX(" + (isLike ? "" : "-") + "120%) rotate(" + (isLike ? 18 : -18) + "deg)";
+        if (poster.style.transform) {
+            // Swiped by hand: it is already out of place and tilted, however far it was thrown. It only fades from there;
+            // flying to a fixed spot would bring a far-thrown poster back before it disappears.
+            poster.style.transition = "opacity " + FLY_MS + "ms ease-out";
+        } else {
+            poster.style.transition = "transform " + FLY_MS + "ms ease-in, opacity " + FLY_MS + "ms ease-in";
+            poster.style.transform = "translateX(" + (isLike ? "" : "-") + "120%) rotate(" + (isLike ? 18 : -18) + "deg)";
+        }
         poster.style.opacity = "0";
         return new Promise(function (resolve) {
             setTimeout(resolve, FLY_MS);
@@ -872,7 +878,8 @@
         var startX = null;
         var dragging = false;
         card.addEventListener("pointerdown", function (e) {
-            if (self.voting) {
+            // Nothing to swipe while a vote is on its way, or when the titles are over.
+            if (self.voting || !self.current) {
                 return;
             }
             startX = e.clientX;
@@ -911,7 +918,7 @@
             }
             var dx = e.clientX - startX;
             startX = null;
-            if (Math.abs(dx) > SWIPE_DISTANCE && !self.voting) {
+            if (Math.abs(dx) > SWIPE_DISTANCE && !self.voting && self.current) {
                 self.vote(dx > 0);
             } else {
                 resetCard(card, true);

@@ -222,7 +222,7 @@ try {
     & $mouse "mouseReleased" -150
     Start-Sleep -Milliseconds 100
     $flying = Js $cardState | ConvertFrom-Json
-    Check "after a long swipe the poster flies out to the left" ($flying.transform -match 'translateX\(-120%\)' -and $flying.opacity -eq "0" -and $flying.textX -eq $before.textX) ($flying | ConvertTo-Json -Compress)
+    Check "after a long swipe the poster fades out where it was left, the text stays" ($flying.transform -match 'translateX\(-150px\)' -and $flying.opacity -eq "0" -and $flying.textX -eq $before.textX) ($flying | ConvertTo-Json -Compress)
     $arrived = Wait-Js "document.querySelector('#svCard h2') && document.querySelector('#svCard h2').innerText !== $((ConvertTo-Json $before.title))" 8
     Check "the next title arrives after the vote" ([bool]$arrived)
     Start-Sleep -Milliseconds 400
@@ -230,12 +230,30 @@ try {
     Check "the new card is clean (nothing left of the swipe) and the vote is counted" ($next.transform -eq "" -and $next.opacity -eq "" -and $next.drag -eq "" -and $next.votes -match '^4 ') ($next | ConvertTo-Json -Compress)
     Save-Shot "$shots\05c-after-swipe.png"
 
+    # Thrown far: it must not come back to a fixed spot before it disappears.
+    & $mouse "mousePressed" 0
+    foreach ($dx in -100, -250, -400) { & $mouse "mouseMoved" $dx }
+    & $mouse "mouseReleased" -400
+    Start-Sleep -Milliseconds 100
+    $thrown = Js $cardState | ConvertFrom-Json
+    Check "a poster thrown far away stays where it was thrown while it fades" ($thrown.transform -match 'translateX\(-400px\)' -and $thrown.opacity -eq "0") ($thrown | ConvertTo-Json -Compress)
+    Check "the next title arrives after the throw" ([bool](Wait-Js "document.querySelector('#svVotesCount').innerText.startsWith('5 ')" 8)) (Js "document.querySelector('#svVotesCount').innerText")
+    Start-Sleep -Milliseconds 400
+
+    # A vote by button has no drag to continue from: the poster flies out to the side by itself.
+    Js "document.querySelector('#svDislike').click(); true" | Out-Null
+    Start-Sleep -Milliseconds 100
+    $byButton = Js $cardState | ConvertFrom-Json
+    Check "a vote by button makes the poster fly out to the left" ($byButton.transform -match 'translateX\(-120%\)' -and $byButton.opacity -eq "0" -and $byButton.drag -eq "dislike") ($byButton | ConvertTo-Json -Compress)
+    Check "the next title arrives after the button" ([bool](Wait-Js "document.querySelector('#svVotesCount').innerText.startsWith('6 ')" 8)) (Js "document.querySelector('#svVotesCount').innerText")
+    Start-Sleep -Milliseconds 400
+
     Send-Cdp "Emulation.setEmulatedMedia" @{ features = @(@{ name = "prefers-reduced-motion"; value = "reduce" }) } | Out-Null
     Js "document.querySelector('#svDislike').click(); true" | Out-Null
     Start-Sleep -Milliseconds 60
     Check "with reduced motion the poster does not fly" ((Js "document.querySelector('#svCard .svPosterBox').style.opacity") -eq "")
     Send-Cdp "Emulation.setEmulatedMedia" @{ features = @() } | Out-Null
-    Check "the vote still counts with reduced motion" ([bool](Wait-Js "document.querySelector('#svVotesCount').innerText.startsWith('5 ')" 8)) (Js "document.querySelector('#svVotesCount').innerText")
+    Check "the vote still counts with reduced motion" ([bool](Wait-Js "document.querySelector('#svVotesCount').innerText.startsWith('7 ')" 8)) (Js "document.querySelector('#svVotesCount').innerText")
 
     Call $sv POST "/SyncVote/Vote" @{ RoomId = $room.Id; ItemId = @($res.Body.LikedItems)[0].ItemId; IsLike = $true } | Out-Null
     Js "document.querySelector('.svEnd').click(); true" | Out-Null
@@ -271,6 +289,14 @@ try {
     $roSecond = Js "document.querySelector('#svCard h2').innerText"
     Js "document.querySelector('#svLike').click(); true" | Out-Null
     Check "after the two titles of the runoff there is nothing left to vote on" ([bool](Wait-Js "!document.querySelector('#svCard h2')" 8))
+    # There is no title to vote on, so there is nothing to swipe either: the empty card must not move and get stuck out of place.
+    $empty = Js "(function(){ const b=document.querySelector('#svCard .svPosterBox').getBoundingClientRect(); return JSON.stringify({x: Math.round(b.left+b.width/2), y: Math.round(b.top+b.height/2)}) })()" | ConvertFrom-Json
+    foreach ($step in @(@("mousePressed", 0), @("mouseMoved", 60), @("mouseMoved", 150), @("mouseReleased", 150))) {
+        Send-Cdp "Input.dispatchMouseEvent" @{ type = $step[0]; x = $empty.x + $step[1]; y = $empty.y; button = "left"; buttons = $(if ($step[0] -eq "mouseReleased") { 0 } else { 1 }); clickCount = 1 } | Out-Null
+    }
+    Start-Sleep -Milliseconds 400
+    $emptyState = Js "JSON.stringify({ transform: document.querySelector('#svCard .svPosterBox').style.transform, drag: document.querySelector('#svCard').dataset.drag || '' })" | ConvertFrom-Json
+    Check "with nothing left to vote on the card does not follow a swipe" ($emptyState.transform -eq "" -and $emptyState.drag -eq "") ($emptyState | ConvertTo-Json -Compress)
     Check "both titles of the runoff were liked on the server" (@((Call $root GET "/SyncVote/Room/$($room.Id)/Results").Body.LikedItems).Count -eq 2)
     Check "the two cards were the two liked titles" ((@($roFirst, $roSecond) | Sort-Object) -join "|" -eq ((@($res.Body.LikedItems).Name | Sort-Object) -join "|")) "cards: $roFirst | $roSecond"
     Js "document.querySelector('.svEnd').click(); true" | Out-Null
@@ -289,8 +315,9 @@ try {
     Start-Sleep 2
     $auto = Wait-Js "!!document.querySelector('.svPlay')" 70
     Check "results appear without anyone ending the vote" ([bool]$auto)
-    Check "with a single liked title there is no runoff to offer" (-not (Js "!!document.querySelector('.svRunoff')"))
-    Check "the other three buttons are still there" ((Js "document.querySelectorAll('.svDialog .formDialogFooterItem').length") -eq 3)
+    $oneLike = (Call $root GET "/SyncVote/Room/$($room.Id)/Results").Body
+    Check "with a single liked title there is no runoff to offer" (-not (Js "!!document.querySelector('.svRunoff')")) "liked on the server: $(@($oneLike.LikedItems).Name -join ', ')"
+    Check "the other three buttons are still there" ((Js "document.querySelectorAll('.svDialog .formDialogFooterItem').length") -eq 3) "buttons: $(Js "Array.from(document.querySelectorAll('.svDialog .formDialogFooterItem')).map(b => b.innerText.trim()).join(' | ')")"
 
     Write-Host "== play the winner"
     Js "document.querySelector('.svPlay').click(); true" | Out-Null
