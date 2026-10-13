@@ -61,6 +61,7 @@
     "msg.roomCreated": "Stanza di voto creata",
     "msg.errorCreatingRoom": "Impossibile creare la stanza",
     "msg.errorStarting": "Impossibile avviare la votazione",
+    "msg.errorClosing": "Impossibile chiudere la stanza",
     "config.title": "Impostazioni SyncVote",
     "config.defaultTimeLimit": "Tempo limite predefinito (minuti)",
     "config.maxRoomMembers": "Numero massimo di partecipanti",

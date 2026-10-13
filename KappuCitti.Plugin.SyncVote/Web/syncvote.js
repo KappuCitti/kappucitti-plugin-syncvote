@@ -253,6 +253,18 @@
         return Promise.resolve(api && api.getCurrentUserId ? api.getCurrentUserId() : null);
     };
 
+    // Administrators can close any room (the server checks it); the client only has to show them the button.
+    SyncVoteManager.prototype.currentIsAdmin = function () {
+        var api = client();
+        return Promise.resolve(api && api.getCurrentUser ? api.getCurrentUser() : null)
+            .then(function (user) {
+                return !!(user && user.Policy && user.Policy.IsAdministrator);
+            })
+            .catch(function () {
+                return false;
+            });
+    };
+
     // ------------------------------------------------------- SyncPlay menu
 
     // The menu of a SyncPlay group has "leave-group" in it. Outside a group the menu offers to create/join one: no SyncVote there.
@@ -371,10 +383,11 @@
         return i18n
             .load()
             .then(function () {
-                return Promise.all([self.currentUserId(), call("GET", "SyncVote/SyncPlayInfo")]);
+                return Promise.all([self.currentUserId(), call("GET", "SyncVote/SyncPlayInfo"), self.currentIsAdmin()]);
             })
             .then(function (result) {
                 self.userId = result[0];
+                self.isAdmin = result[2];
                 self.group = result[1] && result[1].GroupId ? result[1] : null;
                 if (!self.group) {
                     toast(t("msg.notInSyncPlay"));
@@ -406,6 +419,10 @@
 
     SyncVoteManager.prototype.isOrganizer = function () {
         return !!this.room && same(this.room.OrganizerId, this.userId);
+    };
+
+    SyncVoteManager.prototype.canClose = function () {
+        return this.isOrganizer() || (!!this.room && !!this.isAdmin);
     };
 
     SyncVoteManager.prototype.stateOf = function (room) {
@@ -674,7 +691,13 @@
         this.renderLobbyMembers();
         this.startPolling();
 
-        setFooter(organizer ? btn(t("manageVoting.start"), "button-submit svStart", "play_arrow") + btn(t("btn.closeRoom"), "button-cancel svCloseRoom", "delete") : "");
+        var canClose = this.canClose();
+        setFooter((organizer ? btn(t("manageVoting.start"), "button-submit svStart", "play_arrow") : "") + (canClose ? btn(t("btn.closeRoom"), "button-cancel svCloseRoom", "delete") : ""));
+        if (canClose) {
+            dialog.footer().querySelector(".svCloseRoom").addEventListener("click", function () {
+                self.closeRoom();
+            });
+        }
         if (organizer) {
             dialog.footer().querySelector(".svStart").addEventListener("click", function () {
                 call("POST", "SyncVote/Room/" + room.Id + "/StartVoting")
@@ -685,9 +708,6 @@
                     .catch(function () {
                         toast(t("msg.errorStarting"));
                     });
-            });
-            dialog.footer().querySelector(".svCloseRoom").addEventListener("click", function () {
-                self.closeRoom();
             });
         }
     };
@@ -706,13 +726,22 @@
             return;
         }
         call("DELETE", "SyncVote/Room/" + this.room.Id)
-            .catch(function () {
+            .catch(function (e) {
+                if (e.status !== 404) {
+                    throw e; // refused or unreachable: the room is still there, so say so and keep the dialog
+                }
                 /* already gone */
             })
-            .then(function () {
-                self.room = null;
-                dialog.close();
-            });
+            .then(
+                function () {
+                    self.room = null;
+                    dialog.close();
+                },
+                function (e) {
+                    console.error(LOG, e);
+                    toast(t("msg.errorClosing"));
+                },
+            );
     };
 
     // ----------------------------------------------------------------- voting
@@ -1079,18 +1108,23 @@
 
                 // A runoff is only worth it when there is something to choose between: at least two titles got a like.
                 var canRunoff = results.LikedItems.length >= 2;
+                var canClose = self.canClose();
                 setFooter(
-                    organizer
+                    (organizer
                         ? (results.Winner ? btn(t("btn.playWinner"), "button-submit svPlay", "play_arrow") : "") +
-                              (canRunoff ? btn(t("btn.runoff"), "svRunoff", "how_to_vote", t("btn.runoff.hint", results.LikedItems.length)) : "") +
-                              btn(t("btn.newRound"), "svAgain", "replay") +
-                              btn(t("btn.closeRoom"), "button-cancel svCloseRoom", "delete")
-                        : "",
+                          (canRunoff ? btn(t("btn.runoff"), "svRunoff", "how_to_vote", t("btn.runoff.hint", results.LikedItems.length)) : "") +
+                          btn(t("btn.newRound"), "svAgain", "replay")
+                        : "") + (canClose ? btn(t("btn.closeRoom"), "button-cancel svCloseRoom", "delete") : ""),
                 );
+                var footer = dialog.footer();
+                if (canClose) {
+                    footer.querySelector(".svCloseRoom").addEventListener("click", function () {
+                        self.closeRoom();
+                    });
+                }
                 if (!organizer) {
                     return;
                 }
-                var footer = dialog.footer();
                 var play = footer.querySelector(".svPlay");
                 if (play) {
                     play.addEventListener("click", function () {
@@ -1113,9 +1147,6 @@
                 }
                 footer.querySelector(".svAgain").addEventListener("click", function () {
                     self.startRound(false);
-                });
-                footer.querySelector(".svCloseRoom").addEventListener("click", function () {
-                    self.closeRoom();
                 });
             })
             .catch(function (e) {

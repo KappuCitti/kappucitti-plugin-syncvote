@@ -61,6 +61,7 @@
     "msg.roomCreated": "Voting room created",
     "msg.errorCreatingRoom": "Could not create the room",
     "msg.errorStarting": "Could not start the voting",
+    "msg.errorClosing": "Could not close the room",
     "config.title": "SyncVote Settings",
     "config.defaultTimeLimit": "Default time limit (minutes)",
     "config.maxRoomMembers": "Max room members",

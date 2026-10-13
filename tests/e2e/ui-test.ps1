@@ -315,6 +315,27 @@ try {
     Check "no SyncVote console errors" (-not $errors) ($errors -join " | ")
     $script:console | Where-Object { $_ -match 'SyncVote' } | Select-Object -First 5 | ForEach-Object { Write-Host "      console: $_" }
 
+    # The browser is logged in as an administrator; the room below belongs to somebody else. (After the console check: a refused
+    # close is logged on purpose.)
+    Write-Host "== an administrator closes a room somebody else organized"
+    $svCollection = @((Call $sv GET "/SyncVote/Library/Collections").Body)[0]
+    $svRoom = (Call $sv POST "/SyncVote/Room" @{ Name = "Stanza di svtest"; SelectedCollections = @($svCollection.Id); TimeLimit = 2 }).Body
+    Check "the other user organized a room in the group" ($svRoom -and $svRoom.OrganizerId -ne $root.UserId) ($svRoom | ConvertTo-Json -Compress)
+    Open-SyncPlayMenu
+    Js "document.querySelector('.svSyncVoteItem').click(); true" | Out-Null
+    $lobbyOfOther = Wait-Js "!!document.querySelector('.svCloseRoom')" 8
+    Check "the administrator sees Close room" ([bool]$lobbyOfOther)
+    Check "and no Start voting, which is the organizer's" ((Js "!document.querySelector('.svStart')"))
+    Save-Shot "$shots\07-admin-lobby.png"
+    # A refused close must not look like a success: the dialog stays and says so.
+    Js "window.__realFetch = window.fetch; window.fetch = (u, o) => (o && o.method === 'DELETE') ? Promise.resolve(new Response('', { status: 403 })) : window.__realFetch(u, o); true" | Out-Null
+    Js "document.querySelector('.svCloseRoom').click(); true" | Out-Null
+    Start-Sleep -Milliseconds 800
+    Check "when the server refuses, the dialog stays open and a message says why" ((Js "!!document.querySelector('.svDialog')") -and (Js "Array.from(document.querySelectorAll('.svToast')).some(t => /close|chiudere/i.test(t.innerText))") -and @((Call $root GET "/SyncVote/Rooms").Body).Count -eq 1)
+    Js "window.fetch = window.__realFetch; document.querySelector('.svCloseRoom').click(); true" | Out-Null
+    Start-Sleep 1
+    Check "closing it for real removes the room and the dialog" ((@((Call $root GET "/SyncVote/Rooms").Body).Count -eq 0) -and (Js "!document.querySelector('.svDialog')"))
+
     Call $root POST "/SyncPlay/Leave" | Out-Null
 }
 finally {
