@@ -843,7 +843,8 @@
         if (!poster) {
             return;
         }
-        poster.style.transition = animate && !reducedMotion() ? "transform 0.2s ease-out, opacity 0.2s ease-out" : "none";
+        // A short swipe that does not make it comes back with a small bounce.
+        poster.style.transition = animate && !reducedMotion() ? "transform 0.35s cubic-bezier(0.2, 1.4, 0.4, 1), opacity 0.2s ease-out" : "none";
         poster.style.transform = "";
         poster.style.opacity = "";
         if (!animate) {
@@ -859,10 +860,13 @@
             return Promise.resolve();
         }
         card.dataset.drag = isLike ? "like" : "dislike";
-        if (poster.style.transform) {
-            // Swiped by hand: it is already out of place and tilted, however far it was thrown. It only fades from there;
-            // flying to a fixed spot would bring a far-thrown poster back before it disappears.
-            poster.style.transition = "opacity " + FLY_MS + "ms ease-out";
+        var dragged = /translateX\((-?[\d.]+)px\) rotate\((-?[\d.]+)deg\)/.exec(poster.style.transform);
+        if (dragged) {
+            // Swiped by hand: it is already out of place and tilted, however far it was thrown. It carries on a little in the same
+            // direction while it fades; flying to a fixed spot would bring a far-thrown poster back before it disappears.
+            var push = (isLike ? 1 : -1) * poster.offsetWidth * 0.25;
+            poster.style.transition = "transform " + FLY_MS + "ms ease-out, opacity " + FLY_MS + "ms ease-out";
+            poster.style.transform = "translateX(" + (parseFloat(dragged[1]) + push) + "px) rotate(" + parseFloat(dragged[2]) * 1.3 + "deg)";
         } else {
             poster.style.transition = "transform " + FLY_MS + "ms ease-in, opacity " + FLY_MS + "ms ease-in";
             poster.style.transform = "translateX(" + (isLike ? "" : "-") + "120%) rotate(" + (isLike ? 18 : -18) + "deg)";
@@ -895,6 +899,13 @@
             if (startX === null) {
                 return;
             }
+            if (e.buttons === 0) {
+                // Moving with nothing pressed: the release was lost (another script or an extension, such as one for mouse gestures,
+                // swallowed it). It is not a drag, so do not keep following the pointer.
+                startX = null;
+                resetCard(card, true);
+                return;
+            }
             var dx = e.clientX - startX;
             if (!dragging && Math.abs(dx) < 6) {
                 return;
@@ -924,10 +935,14 @@
                 resetCard(card, true);
             }
         });
-        card.addEventListener("pointercancel", function () {
-            startX = null;
-            resetCard(card, true);
-        });
+        var abandon = function () {
+            if (startX !== null) {
+                startX = null;
+                resetCard(card, true);
+            }
+        };
+        card.addEventListener("pointercancel", abandon);
+        card.addEventListener("lostpointercapture", abandon);
     };
 
     document.addEventListener("keydown", function (e) {

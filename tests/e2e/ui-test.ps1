@@ -216,13 +216,25 @@ try {
     $back = Js $cardState | ConvertFrom-Json
     Check "a short swipe springs back and casts no vote" ($back.transform -eq "" -and $back.drag -eq "" -and $back.title -eq $before.title -and $back.votes -eq $before.votes) ($back | ConvertTo-Json -Compress)
 
+    # A release that never arrives (an extension ate it): moving on with nothing pressed must not drag the poster or cast a vote.
+    & $mouse "mousePressed" 0
+    foreach ($dx in 30, 120) { & $mouse "mouseMoved" $dx }
+    Send-Cdp "Input.dispatchMouseEvent" @{ type = "mouseMoved"; x = $centre.x + 200; y = $centre.y; buttons = 0 } | Out-Null
+    Start-Sleep -Milliseconds 500
+    $lost = Js $cardState | ConvertFrom-Json
+    Check "moving with the button up (lost release) puts the poster back and casts no vote" ($lost.transform -eq "" -and $lost.drag -eq "" -and $lost.title -eq $before.title -and $lost.votes -eq $before.votes) ($lost | ConvertTo-Json -Compress)
+    Send-Cdp "Input.dispatchMouseEvent" @{ type = "mouseReleased"; x = $centre.x + 200; y = $centre.y; button = "left"; buttons = 0; clickCount = 1 } | Out-Null
+
     & $mouse "mousePressed" 0
     foreach ($dx in -40, -90, -150) { & $mouse "mouseMoved" $dx }
     Check "past the threshold to the left the card shows it is a dislike" ((Js "document.querySelector('#svCard').dataset.drag") -eq "dislike")
     & $mouse "mouseReleased" -150
     Start-Sleep -Milliseconds 100
     $flying = Js $cardState | ConvertFrom-Json
-    Check "after a long swipe the poster fades out where it was left, the text stays" ($flying.transform -match 'translateX\(-150px\)' -and $flying.opacity -eq "0" -and $flying.textX -eq $before.textX) ($flying | ConvertTo-Json -Compress)
+    # Where the poster is heading, in px (the inline style is the end of the transition).
+    $headingTo = { param($state) if ($state.transform -match 'translateX\((-?[\d.]+)px\)') { [double]$Matches[1] } else { [double]::NaN } }
+    $x1 = & $headingTo $flying
+    Check "after a long swipe the poster carries on to the left while it fades, the text stays" ($x1 -le -150 -and $x1 -ge -450 -and $flying.opacity -eq "0" -and $flying.textX -eq $before.textX) ($flying | ConvertTo-Json -Compress)
     $arrived = Wait-Js "document.querySelector('#svCard h2') && document.querySelector('#svCard h2').innerText !== $((ConvertTo-Json $before.title))" 8
     Check "the next title arrives after the vote" ([bool]$arrived)
     Start-Sleep -Milliseconds 400
@@ -236,7 +248,8 @@ try {
     & $mouse "mouseReleased" -400
     Start-Sleep -Milliseconds 100
     $thrown = Js $cardState | ConvertFrom-Json
-    Check "a poster thrown far away stays where it was thrown while it fades" ($thrown.transform -match 'translateX\(-400px\)' -and $thrown.opacity -eq "0") ($thrown | ConvertTo-Json -Compress)
+    $x2 = & $headingTo $thrown
+    Check "a poster thrown far away never comes back, it carries on while it fades" ($x2 -le -400 -and $thrown.opacity -eq "0") ($thrown | ConvertTo-Json -Compress)
     Check "the next title arrives after the throw" ([bool](Wait-Js "document.querySelector('#svVotesCount').innerText.startsWith('5 ')" 8)) (Js "document.querySelector('#svVotesCount').innerText")
     Start-Sleep -Milliseconds 400
 
