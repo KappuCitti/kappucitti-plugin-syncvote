@@ -923,6 +923,7 @@
             return Promise.resolve();
         }
         card.dataset.drag = isLike ? "like" : "dislike";
+        card.classList.remove("svEnter"); // a vote right after the poster arrived must not wait for its entrance animation
         var dragged =/translateX\((-?[\d.]+)px\) rotate\((-?[\d.]+)deg\)/.exec(poster.style.transform);
         if (dragged) {
             // Swiped by hand: it is already out of place and tilted, however far it was thrown. It carries on a little in the same
@@ -949,6 +950,8 @@
             if (self.voting || !self.current) {
                 return;
             }
+            // While the entrance animation of the poster runs it holds its transform and opacity, so a quick swipe would not show.
+            card.classList.remove("svEnter");
             startX = e.clientX;
             dragging = false;
             try {

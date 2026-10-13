@@ -260,7 +260,16 @@ try {
     $x2 = & $headingTo $thrown
     Check "a poster thrown far away never comes back, it carries on while it fades" ($x2 -le -400 -and $thrown.opacity -eq "0") ($thrown | ConvertTo-Json -Compress)
     Check "the next title arrives after the throw" ([bool](Wait-Js "document.querySelector('#svVotesCount').innerText.startsWith('5 ')" 8)) (Js "document.querySelector('#svVotesCount').innerText")
-    Start-Sleep -Milliseconds 400
+
+    # Swiping again at once, while the new poster is still arriving: it must follow the pointer all the same (the entrance animation
+    # must not hold on to the poster), and a short drag still springs back.
+    & $mouse "mousePressed" 0
+    foreach ($dx in 30, 60) { & $mouse "mouseMoved" $dx }
+    $quick = Js "(function(){ const p = document.querySelector('#svCard .svPosterBox'); return JSON.stringify({ inline: p.style.transform, shown: getComputedStyle(p).transform }) })()" | ConvertFrom-Json
+    $shownX = if ($quick.shown -match '^matrix\(([^)]*)\)') { [double](($Matches[1] -split ',')[4]) } else { [double]::NaN }
+    Check "a swipe right after the new poster arrived moves the poster on screen" ($quick.inline -match 'translateX\(60px\)' -and $shownX -ge 55 -and $shownX -le 65) ($quick | ConvertTo-Json -Compress)
+    & $mouse "mouseReleased" 60
+    Start-Sleep -Milliseconds 500
 
     # A vote by button has no drag to continue from: the poster flies out to the side by itself.
     Js "document.querySelector('#svDislike').click(); true" | Out-Null
