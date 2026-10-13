@@ -72,7 +72,9 @@ release (`0.1.1` above). So **`0.1.1.0` is the build for Jellyfin 10.10 only**, 
 > or 12 loads but most features fail with errors, and a package for a newer generation does not load at all on an older server.
 
 SyncVote works in the **Jellyfin web client** (browsers and apps built on it), in the new interface of Jellyfin 12 as well as
-in the classic one. Native apps (Android, iOS, TV…) do not show the SyncVote entry yet.
+in the classic one. The **official Jellyfin app for Android** is one of those apps: the SyncVote entry is in its SyncPlay menu and
+swiping works with the finger (tried with app 2.7.3 on Android 12, against Jellyfin 12.2). Fully native apps (Android TV, iOS,
+third-party apps…) do not run the web client, so they are not expected to show it; they have not been tried.
 
 ## Installation
 
@@ -165,7 +167,8 @@ The user ids are in the address of the user's page in the dashboard.
 - Make sure *Add SyncVote to the web interface* is on (Dashboard → Plugins → SyncVote).
 - Open `https://your-server/SyncVote/Client/syncvote.js` in the browser: it should show JavaScript. If not, the plugin is not
   running: check Dashboard → Plugins and the server log.
-- Native apps (Android, iOS, TV) do not show it: use the web client.
+- The official Android app shows it like the browser does. Fully native apps (Android TV, iOS, third-party ones) do not: use
+  the web client or the Android app.
 </details>
 
 <details>
