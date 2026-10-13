@@ -258,8 +258,8 @@
     var BADGE_POLL_MS = 5000;
 
     // The SyncPlay button of the new layout wears a dot while there is a group to join or a group joined. It is marked (and turned
-    // purple by the stylesheet) while the group has a SyncVote room that waits to start or is being voted on. The mark is an attribute
-    // of the button, which the web client does not manage, so its own re-renders leave it alone.
+    // purple by the stylesheet) while the group is voting: from the start of a round until its time is up or the organizer ends it.
+    // The mark is an attribute of the button, which the web client does not manage, so its own re-renders leave it alone.
     SyncVoteManager.prototype.updateBadge = function () {
         var icon = document.querySelector('.MuiAppBar-root svg[data-testid="GroupsIcon"]');
         var button = icon ? icon.closest("button") : null;
@@ -273,9 +273,8 @@
         }
         return call("GET", "SyncVote/SyncPlayInfo")
             .then(function (info) {
-                var state = info && info.GroupId ? info.RoomState : null;
-                if (state === "lobby" || state === "voting") {
-                    button.setAttribute("data-sv-room", state);
+                if (info && info.GroupId && info.RoomState === "voting") {
+                    button.setAttribute("data-sv-room", "voting");
                 } else {
                     button.removeAttribute("data-sv-room");
                 }

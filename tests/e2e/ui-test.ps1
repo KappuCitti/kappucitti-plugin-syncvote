@@ -149,20 +149,26 @@ try {
     $members = Wait-Js "document.querySelector('#svLobbyMembers') && document.querySelector('#svLobbyMembers').innerText.startsWith('2')" 8
     Check "lobby shows the second member" ([bool]$members) (Js "document.querySelector('#svLobbyMembers').innerText")
     Save-Shot "$shots\04-lobby.png"
-    # The dot on the SyncPlay button (new layout only) is purple while the group has a room waiting or voting.
+    # The dot on the SyncPlay button (new layout only) is purple (the Jellyfin logo purple) while the group is voting, not before
+    # (lobby) and not after (results, room closed).
+    $purpleDot = "rgb(170, 92, 195)"
     $dotColor = "(function(){ const i = document.querySelector('.MuiAppBar-root svg[data-testid=GroupsIcon]'); const d = i && i.closest('button') && i.closest('button').querySelector('.MuiBadge-badge'); return d ? getComputedStyle(d).backgroundColor : '' })()"
     # Jellyfin 12 added the dot; the "experimental" layout of 10.x has none, so there is nothing to color there.
     $hasDot = [bool](Js "(function(){ const i = document.querySelector('.MuiAppBar-root svg[data-testid=GroupsIcon]'); return !!(i && i.closest('button') && i.closest('button').querySelector('.MuiBadge-badge')) })()")
     if ($modern -and $serverMajor -ge 12) { Check "the SyncPlay button has a dot while the group is joined" $hasDot }
     if ($modern -and $hasDot) {
-        $purple = Wait-Js "($dotColor) === 'rgb(156, 39, 176)'" 10
-        Check "the dot of the SyncPlay button is purple while a room is open in the group" ([bool]$purple) (Js $dotColor)
+        Start-Sleep 6   # more than one check of the web client (every 5 seconds)
+        Check "the dot of the SyncPlay button is not purple while the room is only in the lobby" ((Js $dotColor) -ne $purpleDot) (Js $dotColor)
     }
 
     Write-Host "== voting"
     Js "document.querySelector('.svStart').click(); true" | Out-Null
     $card = Wait-Js "!!document.querySelector('#svCard h2')" 10
     Check "voting card shows a title" ([bool]$card)
+    if ($modern -and $hasDot) {
+        $purple = Wait-Js "($dotColor) === '$purpleDot'" 10
+        Check "the dot of the SyncPlay button is purple once the voting has started" ([bool]$purple) (Js $dotColor)
+    }
     $title1 = Js "document.querySelector('#svCard h2').innerText"
     Start-Sleep 1.5
     Save-Shot "$shots\05-voting.png"
@@ -290,6 +296,10 @@ try {
     Js "document.querySelector('.svEnd').click(); true" | Out-Null
     $results = Wait-Js "document.querySelectorAll('.svDialog .listItem').length >= 1" 10
     Check "ending the vote shows the results" ([bool]$results)
+    if ($modern -and $hasDot) {
+        $calm = Wait-Js "($dotColor) !== '$purpleDot' && ($dotColor) !== ''" 10
+        Check "the dot is back to normal as soon as the voting is ended" ([bool]$calm) (Js $dotColor)
+    }
     Start-Sleep 1
     Save-Shot "$shots\06-results.png"
     Check "winner is the title liked by both" ((Js "document.querySelector('.svDialog .listItemBodyText').innerText") -like "$(@($res.Body.LikedItems)[0].Name)*")
@@ -346,6 +356,10 @@ try {
     Start-Sleep 2
     $auto = Wait-Js "!!document.querySelector('.svPlay')" 70
     Check "results appear without anyone ending the vote" ([bool]$auto)
+    if ($modern -and $hasDot) {
+        $calmByTime = Wait-Js "($dotColor) !== '$purpleDot' && ($dotColor) !== ''" 10
+        Check "the dot is back to normal when the time is up" ([bool]$calmByTime) (Js $dotColor)
+    }
     $oneLike = (Call $root GET "/SyncVote/Room/$($room.Id)/Results").Body
     Check "with a single liked title there is no runoff to offer" (-not (Js "!!document.querySelector('.svRunoff')")) "liked on the server: $(@($oneLike.LikedItems).Name -join ', ')"
     Check "the other three buttons are still there" ((Js "document.querySelectorAll('.svDialog .formDialogFooterItem').length") -eq 3) "buttons: $(Js "Array.from(document.querySelectorAll('.svDialog .formDialogFooterItem')).map(b => b.innerText.trim()).join(' | ')")"
@@ -369,7 +383,7 @@ try {
     Start-Sleep 1
     Check "closing the room removes it and the dialog" ((@((Call $root GET "/SyncVote/Rooms").Body).Count -eq 0) -and (Js "!document.querySelector('.svDialog')"))
     if ($modern -and $hasDot) {
-        $normal = Wait-Js "($dotColor) !== 'rgb(156, 39, 176)' && ($dotColor) !== ''" 10
+        $normal = Wait-Js "($dotColor) !== '$purpleDot' && ($dotColor) !== ''" 10
         Check "with the room closed the dot is back to the color of the web client" ([bool]$normal) (Js $dotColor)
     }
 

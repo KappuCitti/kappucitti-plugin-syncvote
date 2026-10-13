@@ -108,9 +108,9 @@
     user-select: none;
 }
 
-/* The dot of the SyncPlay button turns purple while the group has a SyncVote room to join or to vote in. */
+/* The dot of the SyncPlay button turns purple (the purple of the Jellyfin logo) while the group is voting. */
 .MuiAppBar-root button[data-sv-room] .MuiBadge-badge {
-    background-color: #9c27b0 !important;
+    background-color: #aa5cc3 !important;
 }
 
 /* The poster that arrives after a vote. */
