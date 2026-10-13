@@ -426,6 +426,18 @@ try {
     $apiCode = ((Call $root GET "/SyncVote/Rooms").Body | Where-Object Name -eq "Con codice").Code
     Check "the code in the header is the code of the server, in two groups of three" ($chipText -match '^\d{3} \d{3}$' -and ($chipText -replace ' ', '') -eq $apiCode) "header '$chipText', server '$apiCode'"
     Check "the big one is the same" ((Js "document.querySelector('#svCodeBig').innerText") -eq $chipText)
+    # A new code, when the code got to somebody who should not have it: asked first, and only then done.
+    Check "next to the code there is a button for a new one" ([bool](Js "!!document.querySelector('.svCodeRenew')"))
+    Js "document.querySelector('.svCodeRenew').click(); true" | Out-Null
+    Check "it asks before doing anything" ([bool](Js "!!document.querySelector('.svCodeAsk') && !!document.querySelector('.svCodeYes') && !!document.querySelector('.svCodeNo')"))
+    Save-Shot "$shots\09-code-ask.png"
+    Js "document.querySelector('.svCodeNo').click(); true" | Out-Null
+    Check "saying no leaves the code as it was" ((Js "document.querySelector('.svCode .svCodeText').innerText") -eq $chipText -and ((Call $root GET "/SyncVote/Rooms").Body | Where-Object Name -eq "Con codice").Code -eq $apiCode)
+    Js "document.querySelector('.svCodeRenew').click(); document.querySelector('.svCodeYes').click(); true" | Out-Null
+    $newText = Wait-Js "document.querySelector('.svCode') && document.querySelector('.svCode .svCodeText').innerText !== '$chipText' && document.querySelector('.svCode .svCodeText').innerText" 8
+    $apiNew = ((Call $root GET "/SyncVote/Rooms").Body | Where-Object Name -eq "Con codice").Code
+    Check "saying yes makes a new code, in the header and in the lobby, the same as the server's" ($newText -match '^\d{3} \d{3}$' -and ($newText -replace ' ', '') -eq $apiNew -and $apiNew -ne $apiCode -and (Js "document.querySelector('#svCodeBig').innerText") -eq $newText) "was $chipText, now $newText, server $apiNew"
+    $chipText = $newText; $apiCode = $apiNew
     Save-Shot "$shots\09-lobby-code.png"
     Js "document.querySelector('.svCode').click(); true" | Out-Null
     Check "clicking the code copies it and says so" ([bool](Wait-Js "!!document.querySelector('.svToast')" 3))
@@ -529,10 +541,18 @@ try {
     Js "document.querySelector('#svLike').click(); true" | Out-Null
     Check "and their vote counts" ([bool](Wait-Js "document.querySelector('#svVotesCount').innerText.startsWith('1 ')" 8))
 
+    # The organizer makes a new code (it leaked): they are out of the room and have to type the new one.
+    $renewedCode = (Call $root POST "/SyncVote/Room/$($roomB.Id)/NewCode").Body.Code
+    Check "after a new code the screen asks for it again, by itself" ([bool](Wait-Js "!!document.querySelector('#svCodeInput')" 12))
+    & $tryCode $roomB.Code
+    Check "the code they used before is refused" ([bool](Js "!!document.querySelector('#svCodeInput')"))
+    & $tryCode $renewedCode
+    Check "the new one lets them back in" ([bool](Wait-Js "!!document.querySelector('#svCard h2')" 10))
+
     # A code for each round: the next round has a new code and they have to type it to vote again.
     Call $root POST "/SyncVote/Room/$($roomB.Id)/EndVoting" | Out-Null
     $next = (Call $root POST "/SyncVote/Room/$($roomB.Id)/StartVoting").Body
-    Check "the next round has a new code" ($next.Code -ne $roomB.Code -and $next.Code -match '^\d{6}$')
+    Check "the next round has a new code" ($next.Code -ne $renewedCode -and $next.Code -match '^\d{6}$')
     Check "and the screen asks for it again, by itself" ([bool](Wait-Js "!!document.querySelector('#svCodeInput')" 12))
     & $tryCode $roomB.Code
     Check "the old code is not good any more" ([bool](Js "!!document.querySelector('#svCodeInput')"))

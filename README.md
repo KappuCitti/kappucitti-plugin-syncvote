@@ -127,6 +127,8 @@ not know, tick **Ask for a code to vote** when you create the room:
 - By default the code lasts for **the whole SyncPlay session**: the next room of the group has the same one, and whoever typed it
   does not type it again. Choose **one round** instead and every new round has a new code (the people of the previous round have
   to type the new one).
+- If the code gets to somebody who should not have it, the button next to it in the header makes a **new code**: it asks first,
+  then everybody else is out of the room and has to type the new one (the votes already cast stay).
 - Guessing is slowed down: after 7 wrong codes (you can change the number in the settings) the user has to wait 30 seconds, then
   longer with each mistake. The codes are never obvious ones like `111111` or `123456`.
 

@@ -663,24 +663,74 @@
         });
     }
 
+    // The code in the header, with what the organizer (or an administrator) can do about it: copy it, or make a new one when it got
+    // to somebody who should not have it. A new code puts everybody else out of the room, so it asks first (inline: the
+    // dialogs of the browser are not always shown in the apps built on the web client).
     SyncVoteManager.prototype.addCodeChip = function (code) {
+        var self = this;
+        var room = this.room;
         var header = dialog.container.querySelector(".formDialogHeader");
-        header.insertAdjacentHTML(
-            "beforeend",
-            '<button type="button" class="svCode" title="' + esc(t("code.chip.title")) + '"><span class="material-icons" aria-hidden="true">vpn_key</span><span class="svCodeText">' + esc(formatCode(code)) + "</span></button>",
-        );
-        header.querySelector(".svCode").addEventListener("click", function () {
-            copyText(code).then(
-                function () {
-                    toast(t("code.copied"));
-                },
-                function () {
-                    toast(formatCode(code));
-                },
-            );
-        });
-    };
+        header.insertAdjacentHTML("beforeend", '<span class="svCodeTools"></span>');
+        var tools = header.querySelector(".svCodeTools");
+        var canRenew = this.canClose();
+        var timer = null;
 
+        var show = function () {
+            clearTimeout(timer);
+            if (!document.body.contains(tools)) {
+                return;
+            }
+            tools.innerHTML =
+                '<button type="button" class="svCode" title="' + esc(t("code.chip.title")) + '"><span class="material-icons" aria-hidden="true">vpn_key</span><span class="svCodeText">' + esc(formatCode(code)) + "</span></button>" +
+                (canRenew ? '<button type="button" class="svCodeRenew" title="' + esc(t("code.renew.title")) + '"><span class="material-icons" aria-hidden="true">autorenew</span></button>' : "");
+            tools.querySelector(".svCode").addEventListener("click", function () {
+                copyText(code).then(
+                    function () {
+                        toast(t("code.copied"));
+                    },
+                    function () {
+                        toast(formatCode(code));
+                    },
+                );
+            });
+            if (canRenew) {
+                tools.querySelector(".svCodeRenew").addEventListener("click", ask);
+            }
+        };
+
+        var renew = function () {
+            clearTimeout(timer);
+            call("POST", "SyncVote/Room/" + room.Id + "/NewCode")
+                .then(function (updated) {
+                    self.room = updated;
+                    // Not a full render: the card on screen stays where it is.
+                    tools.remove();
+                    self.addCodeChip(updated.Code);
+                    var big = document.getElementById("svCodeBig");
+                    if (big) {
+                        big.textContent = formatCode(updated.Code);
+                    }
+                    toast(t("code.renewed"));
+                })
+                .catch(function (e) {
+                    console.error(LOG, e);
+                    toast(t("msg.error"));
+                    show();
+                });
+        };
+
+        var ask = function () {
+            tools.innerHTML =
+                '<span class="svCodeAsk">' + esc(t("code.renew.ask")) + "</span>" +
+                '<button type="button" class="svCodeYes" title="' + esc(t("code.renew.yes")) + '"><span class="material-icons" aria-hidden="true">check</span></button>' +
+                '<button type="button" class="svCodeNo" title="' + esc(t("code.renew.no")) + '"><span class="material-icons" aria-hidden="true">close</span></button>';
+            tools.querySelector(".svCodeYes").addEventListener("click", renew);
+            tools.querySelector(".svCodeNo").addEventListener("click", show);
+            timer = setTimeout(show, 6000);
+        };
+
+        show();
+    };
     // ------------------------------------------------------------- room code
 
     // Shown to somebody who is not in a room that asks for a code: nothing to vote on until the right one is typed.

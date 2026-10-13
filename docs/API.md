@@ -19,6 +19,7 @@ Every endpoint needs a Jellyfin-authenticated user, like the rest of the Jellyfi
 | `POST /SyncVote/Room/{id}/Join` | A member of the room's SyncPlay group | Join. Joining twice is fine. A room with a [code](#room-code) needs it in the body: `{ "Code": "123456" }` |
 | `POST /SyncVote/Room/{id}/StartVoting[?onlyLiked=true]` | The organizer | Start a round (a new round drops the previous votes). With `onlyLiked=true` it is a [runoff](#runoff) |
 | `POST /SyncVote/Room/{id}/EndVoting` | The organizer | End the round now |
+| `POST /SyncVote/Room/{id}/NewCode` | The organizer or an administrator | Make a new [code](#room-code) for a room that asks for one: everybody else is out of the room until they type it, the votes already cast stay |
 | `DELETE /SyncVote/Room/{id}` | The organizer or an administrator | Close the room |
 | `GET /SyncVote/Room/{id}/Candidates?skip=0&limit=20` | A member | The titles the caller has not voted on yet |
 | `POST /SyncVote/Vote` | A member | `{ "RoomId": "…", "ItemId": "…", "IsLike": true }`. Voting again on a title replaces the vote |
@@ -51,6 +52,9 @@ A room can ask for a code, so that only the people who were given it can vote, h
   is never one of the obvious ones (`111111`, `123456`, `121212`…), nor the code of another room open at the same time.
 - The body of a join is read up to 2 KB (`413 TooLarge` beyond that); the code is the only thing in it.
 - A code works at any time: somebody who joins while a round is running can vote in it at once.
+- If the code gets to somebody who should not have it, `POST /SyncVote/Room/{id}/NewCode` (organizer or administrator) makes a new
+  one, always a different one. Everybody but the organizer is out of the room and has to type the new code; the votes already cast
+  stay. With a code for the whole session, the next room of the group has the new code too.
 - `CodeScope: "Session"` (the default): the code belongs to the SyncPlay group, every room the group opens gets the same one, and
   whoever entered it does not enter it again. The group forgets it a day after it was last used.
   `CodeScope: "Round"`: the room has a code of its own, and a new round after a finished one (also a runoff) changes it and

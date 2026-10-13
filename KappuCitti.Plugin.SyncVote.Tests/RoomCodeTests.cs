@@ -502,6 +502,106 @@ public class RoomCodeTests
         Assert.True(_service.JoinRoom(room.Id, Guid.NewGuid(), "042917").Succeeded);
     }
 
+    // ---- a new code, asked by the organizer
+
+    [Fact]
+    public void ANewCodeKeepsOutEverybodyWhoHadTheOldOne()
+    {
+        var room = NewRoom();
+        _service.JoinRoom(room.Id, Alice, "042917");
+        _service.JoinRoom(room.Id, Bob, "042917");
+
+        var renewed = _service.RenewCode(room.Id, Organizer, false);
+
+        Assert.True(renewed.Succeeded);
+        Assert.Equal("555111", _service.GetCode(room.Id));
+        Assert.Equal(new[] { Organizer }, renewed.Value!.MemberIds);
+        Assert.Null(renewed.Value.Code);
+        Assert.Equal(RoomError.CodeRequired, _service.JoinRoom(room.Id, Alice).Error);
+        Assert.Equal(RoomError.WrongCode, _service.JoinRoom(room.Id, Alice, "042917").Error);
+        Assert.True(_service.JoinRoom(room.Id, Alice, "555111").Succeeded);
+    }
+
+    [Fact]
+    public void ANewCodeIsNeverTheOldOne()
+    {
+        _codes.Clear();
+        foreach (var code in new[] { "314159", "314159", "314159", "271828" })
+        {
+            _codes.Enqueue(code);
+        }
+
+        var room = NewRoom();
+        _service.RenewCode(room.Id, Organizer, false);
+
+        Assert.Equal("271828", _service.GetCode(room.Id));
+    }
+
+    [Fact]
+    public void AdministratorsCanAskForANewCodeAndNobodyElse()
+    {
+        var room = NewRoom();
+        _service.JoinRoom(room.Id, Alice, "042917");
+
+        Assert.Equal(RoomError.NotOrganizer, _service.RenewCode(room.Id, Alice, false).Error);
+        Assert.Equal("042917", _service.GetCode(room.Id));
+        Assert.True(_service.RenewCode(room.Id, Admin, true).Succeeded);
+        Assert.Equal("555111", _service.GetCode(room.Id));
+    }
+
+    [Fact]
+    public void ARoomWithoutACodeOrAMissingOneHasNothingToRenew()
+    {
+        var plain = NewRoom(code: false);
+
+        Assert.Equal(RoomError.Invalid, _service.RenewCode(plain.Id, Organizer, false).Error);
+        Assert.Equal(RoomError.NotFound, _service.RenewCode(Guid.NewGuid(), Organizer, false).Error);
+    }
+
+    [Fact]
+    public void TheVotesAlreadyCastStayWhenTheCodeChanges()
+    {
+        var room = NewRoom();
+        _service.JoinRoom(room.Id, Alice, "042917");
+        _service.StartVoting(room.Id, Organizer);
+        _service.CastVote(room.Id, Alice, MovieA, true);
+
+        _service.RenewCode(room.Id, Organizer, false);
+
+        Assert.Equal(RoomError.NotMember, _service.CastVote(room.Id, Alice, MovieA, false).Error);
+        Assert.Equal(MovieA, _service.GetResults(room.Id)!.Winner!.ItemId);
+    }
+
+    [Fact]
+    public void ACodeForTheSessionRenewedBecomesTheCodeOfTheGroup()
+    {
+        var first = NewRoom("group-1");
+        _service.JoinRoom(first.Id, Alice, "042917");
+        _service.RenewCode(first.Id, Organizer, false);
+        _service.CloseRoom(first.Id, Organizer, false);
+
+        var second = NewRoom("group-1");
+
+        Assert.Equal("555111", _service.GetCode(second.Id));
+        // Alice entered the old code, which is no good any more: she has to enter the new one.
+        Assert.Equal(RoomError.CodeRequired, _service.JoinRoom(second.Id, Alice).Error);
+    }
+
+    [Fact]
+    public void ANewCodeStartsTheCountOfWrongTriesAgain()
+    {
+        var room = NewRoom();
+        for (var i = 0; i < Free; i++)
+        {
+            _service.JoinRoom(room.Id, Alice, "000000");
+        }
+
+        Assert.True(_service.GetRetryAfterSeconds(room.Id, Alice) > 0);
+        _service.RenewCode(room.Id, Organizer, false);
+
+        Assert.Equal(0, _service.GetRetryAfterSeconds(room.Id, Alice));
+    }
+
     // ---- the codes themselves
     [Theory]
     [InlineData("000000")]

@@ -331,6 +331,25 @@ try {
     Check "the new one is" ((Call $c3 POST "/SyncVote/Room/$($round.Body.Id)/Join" @{ Code = $r2.Body.Code }).Status -eq 200)
     Check "a member can vote" ((Call $c3 POST "/SyncVote/Vote" @{ RoomId = $round.Body.Id; ItemId = $items[0].Id; IsLike = $true }).Status -eq 204)
     Call $sv DELETE "/SyncVote/Room/$($round.Body.Id)" | Out-Null
+    # A new code, asked by the organizer (it got to somebody who should not have it): everybody else is out until they type it.
+    $nc = Call $sv POST "/SyncVote/Room" @{ Name = "Nuovo codice"; TimeLimit = 3; SelectedCollections = @($col.Id); RequireCode = $true }
+    $oldCode = $nc.Body.Code
+    Call $c3 POST "/SyncVote/Room/$($nc.Body.Id)/Join" @{ Code = $oldCode } | Out-Null
+    Check "somebody who is not the organizer cannot ask for a new code" ((Call $c3 POST "/SyncVote/Room/$($nc.Body.Id)/NewCode").Status -eq 403 -and (Call $sv GET "/SyncVote/Room/$($nc.Body.Id)").Body.Code -eq $oldCode)
+    $renewed = Call $sv POST "/SyncVote/Room/$($nc.Body.Id)/NewCode"
+    Check "the organizer gets a new code, and it is a different one" ($renewed.Status -eq 200 -and $renewed.Body.Code -match '^\d{6}$' -and $renewed.Body.Code -ne $oldCode) "$oldCode -> $($renewed.Body.Code)"
+    Check "everybody but the organizer is out of the room" (@($renewed.Body.MemberIds).Count -eq 1 -and @($renewed.Body.MemberIds)[0] -eq $sv.UserId)
+    Check "the old code is refused" ((Call $c3 POST "/SyncVote/Room/$($nc.Body.Id)/Join" @{ Code = $oldCode }).Status -eq 403)
+    Check "the new code lets them back in" ((Call $c3 POST "/SyncVote/Room/$($nc.Body.Id)/Join" @{ Code = $renewed.Body.Code }).Status -eq 200)
+    $byAdmin = Call $root POST "/SyncVote/Room/$($nc.Body.Id)/NewCode"
+    Check "an administrator can ask too, and gets the new code" ($byAdmin.Status -eq 200 -and $byAdmin.Body.Code -match '^\d{6}$' -and $byAdmin.Body.Code -ne $renewed.Body.Code)
+    Call $sv DELETE "/SyncVote/Room/$($nc.Body.Id)" | Out-Null
+    $next = Call $sv POST "/SyncVote/Room" @{ Name = "Dopo"; TimeLimit = 3; SelectedCollections = @($col.Id); RequireCode = $true }
+    Check "the next room of the group has the renewed code" ($next.Body.Code -eq $byAdmin.Body.Code) "expected $($byAdmin.Body.Code), got $($next.Body.Code)"
+    Call $sv DELETE "/SyncVote/Room/$($next.Body.Id)" | Out-Null
+    $plainForRenew = Call $sv POST "/SyncVote/Room" @{ Name = "Senza codice"; SelectedCollections = @($col.Id) }
+    Check "a room without a code has nothing to renew" ((Call $sv POST "/SyncVote/Room/$($plainForRenew.Body.Id)/NewCode").Status -eq 400)
+    Call $sv DELETE "/SyncVote/Room/$($plainForRenew.Body.Id)" | Out-Null
     $plainRoom = Call $sv POST "/SyncVote/Room" @{ Name = "Senza"; SelectedCollections = @($col.Id) }
     Check "a room that does not ask for a code has none to show" ($plainRoom.Body.RequiresCode -eq $false -and $null -eq $plainRoom.Body.Code)
     Check "and lets anybody of the group in, as before" ((Call $c3 POST "/SyncVote/Room/$($plainRoom.Body.Id)/Join").Status -eq 200)

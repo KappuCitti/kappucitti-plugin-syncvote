@@ -195,6 +195,19 @@ public class SyncVoteController : ControllerBase
     }
 
     /// <summary>
+    /// Makes a new code for a room that asks for one. Organizer or administrator only. Everybody else is out of the room until they
+    /// type the new code; the votes already cast stay.
+    /// </summary>
+    /// <param name="roomId">The room ID.</param>
+    /// <returns>The room, with its new code.</returns>
+    [HttpPost("Room/{roomId}/NewCode")]
+    public ActionResult<VotingRoom> NewCode([FromRoute] Guid roomId)
+    {
+        var result = _rooms.RenewCode(roomId, CurrentUserId, User.IsAdministrator());
+        return result.Succeeded ? Ok(ForViewer(result.Value!)) : Failure(result.Error);
+    }
+
+    /// <summary>
     /// Closes a room. Organizer or administrator only.
     /// </summary>
     /// <param name="roomId">The room ID.</param>

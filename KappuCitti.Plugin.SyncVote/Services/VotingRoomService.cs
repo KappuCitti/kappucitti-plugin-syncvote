@@ -193,6 +193,39 @@ public class VotingRoomService
     }
 
     /// <summary>
+    /// Makes a new code for a room that asks for one, for example because the code got to somebody who should not have it.
+    /// Everybody but the organizer is out of the room and has to type the new code; the votes already cast stay.
+    /// </summary>
+    /// <param name="roomId">The room ID.</param>
+    /// <param name="userId">The user asking.</param>
+    /// <param name="isAdministrator">Whether the user is a server administrator.</param>
+    /// <returns>The updated room.</returns>
+    public OperationResult<VotingRoom> RenewCode(Guid roomId, Guid userId, bool isAdministrator)
+    {
+        lock (_lock)
+        {
+            var room = FindActive(roomId);
+            if (room == null)
+            {
+                return OperationResult<VotingRoom>.Fail(RoomError.NotFound);
+            }
+
+            if (room.OrganizerId != userId && !isAdministrator)
+            {
+                return OperationResult<VotingRoom>.Fail(RoomError.NotOrganizer);
+            }
+
+            if (!room.RequiresCode)
+            {
+                return OperationResult<VotingRoom>.Fail(RoomError.Invalid);
+            }
+
+            RotateCode(room, "asked by the organizer");
+            return OperationResult<VotingRoom>.Ok(room.Snapshot(Clock()));
+        }
+    }
+
+    /// <summary>
     /// Gets how many seconds a user still has to wait before trying a code again (0 when they can try).
     /// </summary>
     /// <param name="roomId">The room ID.</param>
@@ -299,7 +332,7 @@ public class VotingRoomService
             // the new code to vote again. The first round keeps the people who entered the code in the lobby.
             if (room.RequiresCode && room.CodeScope == RoomCodeScope.Round && room.IsVotingFinished)
             {
-                RotateCode(room);
+                RotateCode(room, "next round");
             }
 
             _votes.RemoveAll(v => v.RoomId == roomId);
@@ -629,12 +662,19 @@ public class VotingRoomService
         return state;
     }
 
-    // A new code for the next round: only the organizer keeps the right to vote. Callers hold _lock.
-    private void RotateCode(VotingRoom room)
+    // A new code for a room (the next round, or because the organizer asked): only the organizer keeps the right to vote, everybody
+    // else types the new code to get back in. The votes already cast stay. A code for the whole session is the code of the group, so
+    // the next room of the group gets the new one too. Callers hold _lock.
+    private void RotateCode(VotingRoom room, string reason)
     {
         var state = new CodeState(NewCode(), Clock());
         state.Verified.Add(room.OrganizerId);
         _roomCodes[room.Id] = state;
+        if (room.CodeScope == RoomCodeScope.Session && room.SyncPlayGroupId != null)
+        {
+            _groupCodes[room.SyncPlayGroupId] = state;
+        }
+
         foreach (var member in room.MemberIds.Where(id => id != room.OrganizerId).ToList())
         {
             room.RemoveMember(member);
@@ -645,7 +685,7 @@ public class VotingRoomService
             _attempts.Remove(key);
         }
 
-        _logger.LogInformation("New code for the next round of room {RoomId}", room.Id);
+        _logger.LogInformation("New code for room {RoomId} ({Reason})", room.Id, reason);
     }
 
     private static bool CanSee(VotingRoom room, Guid userId, string? syncPlayGroupId)
