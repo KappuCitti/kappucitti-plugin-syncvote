@@ -6,7 +6,7 @@ temporary user (`svtest`, removed at the end), SyncPlay groups and rooms, and ch
 | Script | What it checks |
 |---|---|
 | `api-test.ps1` | The HTTP API: authentication, permissions, library, real SyncPlay, room life cycle, votes, ranking, the winner started in SyncPlay, filters and ordering |
-| `ui-test.ps1` | The real web client in headless Chrome: the SyncPlay menu entry (and that the menu closes), creating a room, lobby, voting (buttons, keyboard), timer, layout without scrolling at several heights, results, "play the winner". Saves screenshots |
+| `ui-test.ps1` | The real web client in headless Chrome: the SyncPlay menu entry (once, looking like the native ones, and that the menu closes), creating a room, lobby, voting (buttons, keyboard), timer, layout without scrolling at several heights, results (icons and text of the buttons on one line), the runoff, "play the winner". Saves screenshots. `-Layout legacy\|modern` picks the web client layout, see below |
 | `config-test.ps1` | The settings page, the injection switch, permissions, member limit, private rooms, language selection |
 | `new-server.ps1` | Creates an isolated Jellyfin server from the official portable zip (admin `root`/`root`, a library of 30 fake movies with genres, or your own folder of movies with `-MediaPath`). It only ever stops the server that uses its own data folder |
 | `catalog-test.ps1` | Installs SyncVote from the **published** plugin catalog on an isolated server and checks that the server gets the package made for its Jellyfin generation. Then run `api-test.ps1` on it |
@@ -39,3 +39,17 @@ dotnet publish KappuCitti.Plugin.SyncVote -c Release -p:JellyfinVersion=12.0.0 -
 
 The UI test needs Chrome or Edge (set `CHROME_PATH` to choose one). The unit tests (no server) are in
 `KappuCitti.Plugin.SyncVote.Tests`; run them with `dotnet test`.
+
+## Both web client layouts
+
+Jellyfin's web client has two layouts and the SyncPlay menu is a different piece of the page in each (an action sheet in the
+classic one, a Material UI popover in the new one), so run `ui-test.ps1` once for each:
+
+```powershell
+./tests/e2e/ui-test.ps1 -Base http://127.0.0.1:8098 -Layout legacy -Tag -legacy
+./tests/e2e/ui-test.ps1 -Base http://127.0.0.1:8098 -Layout modern -Tag -modern
+```
+
+`legacy` is the classic header (`desktop-legacy` in 12, the default before) and `modern` the Material UI one (the default in 12,
+"experimental" in 10.x). The default, `-Layout default`, leaves whatever the web client picks, which on Jellyfin 12 is the new
+one. `-Tag` keeps the screenshots of the runs apart.

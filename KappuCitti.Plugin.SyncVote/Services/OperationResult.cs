@@ -38,6 +38,9 @@ public enum RoomError
     /// <summary>No library folder was selected.</summary>
     NoCollectionSelected,
 
+    /// <summary>A runoff needs a finished round in which at least two titles were liked.</summary>
+    NotEnoughLikedTitles,
+
     /// <summary>The request is not valid.</summary>
     Invalid
 }

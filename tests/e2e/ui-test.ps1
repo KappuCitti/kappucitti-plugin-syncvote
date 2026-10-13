@@ -4,8 +4,13 @@
     Screenshots go to -OutDir. Needs a SyncPlay-capable server with one movie library and the plugin installed.
 .PARAMETER LogDir
     The log folder of the server under test (used to confirm SyncPlay received the play request).
+.PARAMETER Layout
+    Which web client layout to test. "default" is what the web client picks by itself (the new Material UI layout on 12, the
+    classic one before). "legacy" forces the classic layout and "modern" the Material UI one (the "experimental" layout in 10.x).
+    Run the test once for each of them: the SyncPlay menu is a different piece of the page in each.
 #>
 param([string]$Base = "http://127.0.0.1:8096", [string]$AdminUser = "root", [string]$AdminPassword = "root", [string]$Tag = "",
+      [ValidateSet("default", "legacy", "modern")][string]$Layout = "default",
       [switch]$ChangeServerLanguage,
       [string]$LogDir = (Join-Path $env:LOCALAPPDATA "jellyfin\log"), [string]$OutDir = (Join-Path ([IO.Path]::GetTempPath()) "syncvote-e2e"))
 
@@ -18,11 +23,27 @@ $script:fail = 0
 function Check($name, $cond, $detail = "") {
     if ($cond) { Write-Host "PASS  $name" -ForegroundColor Green } else { Write-Host "FAIL  $name  $detail" -ForegroundColor Red; $script:fail++ }
 }
+
+# The web client stores the layout in localStorage. 12 renamed the classic one "desktop-legacy" and made the Material UI layout the
+# default (no value); before 12 the classic one is the default and the Material UI one is called "experimental".
+$serverMajor = [int]((Invoke-RestMethod "$Base/System/Info/Public").Version -split '\.')[0]
+$layoutValue = switch ($Layout) {
+    "legacy" { if ($serverMajor -ge 12) { "desktop-legacy" } else { "desktop" } }
+    "modern" { if ($serverMajor -ge 12) { "" } else { "experimental" } }
+    default { $null }
+}
+
+# True when the Material UI header is the one on screen (the classic header stays in the page, hidden, in that case).
+function Test-ModernHeader { [bool](Js "(function(){ const s = document.querySelector('.MuiAppBar-root svg[data-testid=GroupsIcon]'); return !!s && s.getBoundingClientRect().width > 0 })()") }
 function Open-SyncPlayMenu {
-    Js "document.querySelector('.headerSyncButton').click(); true" | Out-Null
-    Wait-Js "!!document.querySelector('.syncPlayGroupMenu.opened')" 8 | Out-Null
+    Js "(function(){ const s = document.querySelector('.MuiAppBar-root svg[data-testid=GroupsIcon]'); const modern = !!s && s.getBoundingClientRect().width > 0; (modern ? s.closest('button') : document.querySelector('.headerSyncButton')).click(); return true })()" | Out-Null
+    Wait-Js "!!document.querySelector('.syncPlayGroupMenu.opened') || !!document.querySelector('#app-sync-play-menu:not(.MuiModal-hidden) ul[role=menu]')" 8 | Out-Null
     Start-Sleep -Milliseconds 600
 }
+# The SyncPlay menu is closed when neither the classic action sheet nor the Material UI popover is open.
+$menuClosed = "!document.querySelector('.syncPlayGroupMenu.opened') && !document.querySelector('#app-sync-play-menu:not(.MuiModal-hidden)')"
+# Icon and text of every button in the footer of the dialog: are they on one line, centered with each other?
+$footerButtons = "(function(){ return JSON.stringify(Array.from(document.querySelectorAll('.svDialog .formDialogFooter .formDialogFooterItem')).map(b => { const icon = b.querySelector('.material-icons'); const text = b.querySelector('span:not(.material-icons)'); const range = document.createRange(); range.selectNodeContents(text); const i = icon ? icon.getBoundingClientRect() : null, tr = range.getBoundingClientRect(), br = b.getBoundingClientRect(); return { label: text.textContent.trim(), lines: range.getClientRects().length, dy: i ? Math.round(Math.abs((i.top + i.height / 2) - (tr.top + tr.height / 2)) * 10) / 10 : 0, inside: br.left <= (i ? i.left : tr.left) + 0.5 && tr.right <= br.right + 0.5 } })) })()"
 
 $root = Login $AdminUser $AdminPassword "ui-device"
 $serverConfig = Invoke-RestMethod "$Base/System/Configuration" -Headers $root.Headers
@@ -36,7 +57,7 @@ function Set-ServerLanguage($culture) {
 if ($ChangeServerLanguage) { Set-ServerLanguage "en-US" }
 $hasBoxSets = [bool]@((Invoke-RestMethod "$Base/SyncVote/Library/Collections" -Headers $root.Headers) | Where-Object { $_.Type -eq "boxset" })
 $serverIsItalian = ((Invoke-RestMethod "$Base/System/Configuration" -Headers $root.Headers).UICulture -match '^it')
-$T = if ($serverIsItalian) { @{ Create = "Crea stanza"; Close = "Chiudi stanza"; Folders = "Cartelle libreria"; Collections = "Collezioni"; Genres = "Generi"; NoCollections = "Ancora nessuna collezione" } } else { @{ Create = "Create room"; Close = "Close room"; Folders = "Library folders"; Collections = "Collections"; Genres = "Genres"; NoCollections = "No collections yet" } }
+$T = if ($serverIsItalian) { @{ Create = "Crea stanza"; Close = "Chiudi stanza"; Folders = "Cartelle libreria"; Collections = "Collezioni"; Genres = "Generi"; NoCollections = "Ancora nessuna collezione"; Runoff = "ballottaggio" } } else { @{ Create = "Create room"; Close = "Close room"; Folders = "Library folders"; Collections = "Collections"; Genres = "Genres"; NoCollections = "No collections yet"; Runoff = "runoff" } }
 $expectedSections = if ($hasBoxSets) { "$($T.Folders)|$($T.Collections)|$($T.Genres)" } else { "$($T.Folders)|$($T.Genres)" }
 # Remove stale rooms left by an interrupted run.
 foreach ($r in @((Call $root GET "/SyncVote/Rooms").Body)) { Call $root DELETE "/SyncVote/Room/$($r.Id)" | Out-Null }
@@ -50,10 +71,19 @@ try {
     Start-Chrome "$OutDir\e2e-chrome-profile"
     Send-Cdp "Page.navigate" @{ url = "$Base/web/index.html" } | Out-Null
     Wait-Js "!!document.querySelector('#txtManualName')" 25 | Out-Null
+    if ($null -ne $layoutValue) {
+        # The layout is read when the page starts: set it, then load the page again.
+        Js $(if ($layoutValue) { "localStorage.setItem('layout', '$layoutValue'); true" } else { "localStorage.removeItem('layout'); true" }) | Out-Null
+        Send-Cdp "Page.navigate" @{ url = "$Base/web/index.html" } | Out-Null
+        Wait-Js "!!document.querySelector('#txtManualName')" 25 | Out-Null
+    }
     Js "(function(){ const n=document.querySelector('#txtManualName'); const p=document.querySelector('#txtManualPassword'); n.value='$AdminUser'; p.value='$AdminPassword'; document.querySelector('.manualLoginForm').dispatchEvent(new Event('submit',{cancelable:true,bubbles:true})); return true })()" | Out-Null
     $ready = Wait-Js "!!window.__syncVoteManager && !!window.ApiClient && !!ApiClient.accessToken()" 25
     Check "SyncVote client script loaded and user logged in" ([bool]$ready)
-    Start-Sleep 2
+    Start-Sleep 3
+    $modern = Test-ModernHeader
+    Write-Host "      web client layout on screen: $(if ($modern) { 'modern (Material UI header)' } else { 'classic header' })"
+    if ($Layout -ne "default") { Check "the web client shows the $Layout layout" ($modern -eq ($Layout -eq "modern")) "modern=$modern" }
     Save-Shot "$shots\01-home.png"
     Check "no literal template text in the page" (-not (Js "document.body.innerText.includes('`${title}') || document.body.innerText.includes('SyncVote Plugin Styles')"))
     Check "no purple floating button" (-not (Js "!!document.querySelector('.svFloatingButton')"))
@@ -68,13 +98,21 @@ try {
 
     Write-Host "== SyncPlay menu"
     Open-SyncPlayMenu
-    Check "SyncVote item is in the SyncPlay menu" ((Js "document.querySelectorAll('.syncPlayGroupMenu.opened .svSyncVoteItem').length") -eq 1)
+    $menuItems = if ($modern) { "#app-sync-play-menu .svSyncVoteItem" } else { ".syncPlayGroupMenu.opened .svSyncVoteItem" }
+    Check "SyncVote item is in the SyncPlay menu, once" ((Js "document.querySelectorAll('$menuItems').length") -eq 1) (Js "document.querySelectorAll('.svSyncVoteItem').length")
+    Check "no SyncVote item is left anywhere else in the page" ((Js "document.querySelectorAll('.svSyncVoteItem').length") -eq 1)
+    if ($modern) {
+        # The entry is a copy of a native one: same height, same text, same padding, and an icon that is really drawn.
+        $look = Js "(function(){ const sv = document.querySelector('.svSyncVoteItem'); const native = Array.from(sv.parentElement.querySelectorAll('li[role=menuitem]')).find(i => i !== sv); const cs = e => getComputedStyle(e), r = e => e.getBoundingClientRect(); const text = e => e.querySelector('.MuiListItemText-primary'); const icon = sv.querySelector('.svMenuIcon'); return JSON.stringify({ hasNative: !!native, height: native ? Math.abs(r(sv).height - r(native).height) : null, font: native ? cs(text(sv)).fontSize === cs(text(native)).fontSize : null, left: native ? cs(sv).paddingLeft === cs(native).paddingLeft : null, label: text(sv).innerText.trim(), iconWidth: Math.round(r(icon).width), iconX: native ? Math.abs(r(icon).left - r(native.querySelector('.MuiListItemIcon-root')).left) < 4 : null, listed: sv.parentElement.matches('ul[role=menu]') }) })()" | ConvertFrom-Json
+        Check "the menu entry looks like the native ones (height, font, padding, icon position)" ($look.hasNative -and $look.height -le 1 -and $look.font -and $look.left -and $look.iconX -and $look.iconWidth -ge 16) ($look | ConvertTo-Json -Compress)
+        Check "the menu entry is inside the list of the menu" ($look.listed -and $look.label -eq "SyncVote") ($look | ConvertTo-Json -Compress)
+    }
     Save-Shot "$shots\02-menu.png"
     Js "document.querySelector('.svSyncVoteItem').click(); true" | Out-Null
     $form = Wait-Js "!!document.querySelector('#svRoomName')" 10
     Check "create dialog opens" ([bool]$form)
     Start-Sleep 1
-    Check "SyncPlay menu is closed once SyncVote opens" ((Js "document.querySelectorAll('.syncPlayGroupMenu.opened').length") -eq 0) (Js "document.querySelectorAll('.syncPlayGroupMenu').length")
+    Check "SyncPlay menu is closed once SyncVote opens" ([bool](Js $menuClosed)) (Js "document.querySelectorAll('.syncPlayGroupMenu, #app-sync-play-menu').length")
     Check "dialog uses Jellyfin's own markup" ((Js "!!document.querySelector('.svDialog.formDialog .formDialogHeader') && !!document.querySelector('.svDialog .formDialogFooter') && !!document.querySelector('#svRoomName.emby-input')"))
     Save-Shot "$shots\03-create.png"
     Check "form lists collections and genres" ((Js "document.querySelectorAll('.svCollection').length") -ge 1 -and (Js "document.querySelectorAll('.svGenre').length") -ge 1)
@@ -167,13 +205,52 @@ try {
     Save-Shot "$shots\06-results.png"
     Check "winner is the title liked by both" ((Js "document.querySelector('.svDialog .listItemBodyText').innerText") -like "$(@($res.Body.LikedItems)[0].Name)*")
 
+    Write-Host "== buttons of the results"
+    Check "the results have a button for each thing the organizer can do (play, runoff, new round, close)" ((Js "document.querySelectorAll('.svDialog .formDialogFooterItem').length") -eq 4 -and (Js "!!document.querySelector('.svPlay') && !!document.querySelector('.svRunoff') && !!document.querySelector('.svAgain') && !!document.querySelector('.svCloseRoom')"))
+    foreach ($size in @(@(1100, 900, "wide"), @(420, 700, "phone"))) {
+        Send-Cdp "Emulation.setDeviceMetricsOverride" @{ width = $size[0]; height = $size[1]; deviceScaleFactor = 1; mobile = $false } | Out-Null
+        Start-Sleep -Milliseconds 700
+        $buttons = @(Js $footerButtons | ConvertFrom-Json)
+        $crooked = @($buttons | Where-Object { $_.dy -gt 1.5 -or $_.lines -ne 1 -or -not $_.inside })
+        Check "icon and text of every button are on one line, centered ($($size[2]) $($size[0])x$($size[1]))" ($buttons.Count -eq 4 -and $crooked.Count -eq 0) (($buttons | ConvertTo-Json -Compress))
+        Save-Shot "$shots\06-results-$($size[2]).png"
+    }
+    Send-Cdp "Emulation.setDeviceMetricsOverride" @{ width = 1100; height = 900; deviceScaleFactor = 1; mobile = $false } | Out-Null
+    Start-Sleep -Milliseconds 700
+
+    Write-Host "== runoff: vote again on the liked titles"
+    Check "the runoff button tells how many titles it is about" ((Js "document.querySelector('.svRunoff').title") -match '2')  (Js "document.querySelector('.svRunoff').title")
+    Js "document.querySelector('.svRunoff').click(); true" | Out-Null
+    Check "the runoff starts a new round" ([bool](Wait-Js "!!document.querySelector('#svCard h2')" 10))
+    $roRoom = (Call $root GET "/SyncVote/Room/$($room.Id)").Body
+    Check "the room is in a runoff between the two liked titles" ($roRoom.IsRunoff -and $roRoom.IsVotingActive -and @($roRoom.RunoffItemIds).Count -eq 2) ($roRoom | ConvertTo-Json -Compress)
+    Check "the title of the dialog says it is a runoff" ((Js "document.querySelector('.svDialog .formDialogHeaderTitle').innerText") -like "*($($T.Runoff))")
+    $roFirst = Js "document.querySelector('#svCard h2').innerText"
+    Js "document.querySelector('#svLike').click(); true" | Out-Null
+    Check "the second runoff title shows up" ([bool](Wait-Js "document.querySelector('#svCard h2') && document.querySelector('#svCard h2').innerText !== $((ConvertTo-Json $roFirst))" 8))
+    $roSecond = Js "document.querySelector('#svCard h2').innerText"
+    Js "document.querySelector('#svLike').click(); true" | Out-Null
+    Check "after the two titles of the runoff there is nothing left to vote on" ([bool](Wait-Js "!document.querySelector('#svCard h2')" 8))
+    Check "both titles of the runoff were liked on the server" (@((Call $root GET "/SyncVote/Room/$($room.Id)/Results").Body.LikedItems).Count -eq 2)
+    Check "the two cards were the two liked titles" ((@($roFirst, $roSecond) | Sort-Object) -join "|" -eq ((@($res.Body.LikedItems).Name | Sort-Object) -join "|")) "cards: $roFirst | $roSecond"
+    Js "document.querySelector('.svEnd').click(); true" | Out-Null
+    Check "ending the runoff shows its results" ([bool](Wait-Js "!!document.querySelector('.svRunoff') || !!document.querySelector('.svPlay')" 10))
+    Check "the results of the runoff say so in the title" ((Js "document.querySelector('.svDialog .formDialogHeaderTitle').innerText") -like "*($($T.Runoff))")
+    Save-Shot "$shots\06b-results-runoff.png"
+
     Write-Host "== new round ends by itself when the time is up"
     Js "document.querySelector('.svAgain').click(); true" | Out-Null
     Check "new round starts" ([bool](Wait-Js "!!document.querySelector('#svCard h2')" 10))
+    $fullRound = (Call $root GET "/SyncVote/Room/$($room.Id)").Body
+    $fullCandidates = (Call $root GET "/SyncVote/Room/$($room.Id)/Candidates?limit=1").Body
+    Check "a new round is about every title again, not the runoff" (-not $fullRound.IsRunoff -and $fullCandidates.TotalCount -gt 2) "runoff=$($fullRound.IsRunoff) titles=$($fullCandidates.TotalCount)"
+    Check "the title of the dialog no longer says runoff" ((Js "document.querySelector('.svDialog .formDialogHeaderTitle').innerText") -notlike "*($($T.Runoff))")
     Js "document.querySelector('#svLike').click(); true" | Out-Null
     Start-Sleep 2
     $auto = Wait-Js "!!document.querySelector('.svPlay')" 70
     Check "results appear without anyone ending the vote" ([bool]$auto)
+    Check "with a single liked title there is no runoff to offer" (-not (Js "!!document.querySelector('.svRunoff')"))
+    Check "the other three buttons are still there" ((Js "document.querySelectorAll('.svDialog .formDialogFooterItem').length") -eq 3)
 
     Write-Host "== play the winner"
     Js "document.querySelector('.svPlay').click(); true" | Out-Null
@@ -184,7 +261,9 @@ try {
     Write-Host "== reopen and close the room"
     if ($ChangeServerLanguage) { Set-ServerLanguage "it-IT"; $T.Close = "Chiudi stanza" }
     Open-SyncPlayMenu
-    Js "document.querySelector('.svSyncVoteItem').click(); true" | Out-Null
+    # In the Material UI menu the entry is ours, not React's: check it answers to the keyboard too.
+    if ($modern) { Js "document.querySelector('.svSyncVoteItem').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})); true" | Out-Null }
+    else { Js "document.querySelector('.svSyncVoteItem').click(); true" | Out-Null }
     $again = Wait-Js "!!document.querySelector('.svCloseRoom')" 8
     Check "reopening from the menu shows the room" ([bool]$again)
     Check "the buttons are in the language of the server (picked up without reloading the page)" ((Js "document.querySelector('.svCloseRoom').innerText.trim()") -eq $T.Close) (Js "document.querySelector('.svCloseRoom').innerText")

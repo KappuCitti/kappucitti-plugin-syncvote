@@ -155,6 +155,36 @@ try {
     $queued = @($sess | Where-Object { $_.UserName -in @("root","svtest") -and $_.NowPlayingQueue }).Count
     Write-Host "      sessions with a play queue after PlayWinner: $queued (informational)"
 
+    Write-Host "== runoff: vote again on the liked titles"
+    # The round above ended with two titles liked: items[0] (2 likes) and items[1] (1 like).
+    $roNo = Call $sv POST "/SyncVote/Room/$($room.Id)/StartVoting?onlyLiked=true"
+    Check "non-organizer cannot start a runoff" ($roNo.Status -eq 403) "status $($roNo.Status)"
+    $ro = Call $root POST "/SyncVote/Room/$($room.Id)/StartVoting?onlyLiked=true"
+    Check "organizer starts a runoff" ($ro.Status -eq 200 -and $ro.Body.IsVotingActive -and $ro.Body.IsRunoff -and @($ro.Body.RunoffItemIds).Count -eq 2) "status $($ro.Status) $($ro.Body | ConvertTo-Json -Compress)"
+    $roCand1 = Call $root GET "/SyncVote/Room/$($room.Id)/Candidates?limit=100"
+    $roCand2 = Call $sv GET "/SyncVote/Room/$($room.Id)/Candidates?limit=100"
+    $finalists = ((@($items[0].Id, $items[1].Id) | Sort-Object) -join ",")
+    Check "the runoff offers only the two liked titles" (@($roCand1.Body.Items).Count -eq 2 -and ((@($roCand1.Body.Items).Id | Sort-Object) -join ",") -eq $finalists) "got $(@($roCand1.Body.Items).Name -join ', ')"
+    Check "same order for every member in the runoff" ((@($roCand1.Body.Items).Id -join ",") -eq (@($roCand2.Body.Items).Id -join ","))
+    $roFresh = Call $root GET "/SyncVote/Room/$($room.Id)/Results"
+    Check "the runoff starts without the old votes" (@($roFresh.Body.LikedItems).Count -eq 0)
+    $outside = Call $root POST "/SyncVote/Vote" @{ RoomId = $room.Id; ItemId = $items[3].Id; IsLike = $true }
+    Check "a vote for a title outside the runoff is refused" ($outside.Status -eq 400) "status $($outside.Status)"
+    Call $root POST "/SyncVote/Vote" @{ RoomId = $room.Id; ItemId = $items[1].Id; IsLike = $true } | Out-Null
+    Call $root POST "/SyncVote/Vote" @{ RoomId = $room.Id; ItemId = $items[0].Id; IsLike = $false } | Out-Null
+    Call $sv POST "/SyncVote/Vote" @{ RoomId = $room.Id; ItemId = $items[1].Id; IsLike = $true } | Out-Null
+    Call $sv POST "/SyncVote/Vote" @{ RoomId = $room.Id; ItemId = $items[0].Id; IsLike = $false } | Out-Null
+    Call $root POST "/SyncVote/Room/$($room.Id)/EndVoting" | Out-Null
+    $roRes = Call $root GET "/SyncVote/Room/$($room.Id)/Results"
+    Check "the runoff has its own winner" ($roRes.Body.Winner.ItemId -eq $items[1].Id -and $roRes.Body.Winner.VoteCount -eq 2) "winner=$($roRes.Body.Winner.Name)"
+    $roAgain = Call $root POST "/SyncVote/Room/$($room.Id)/StartVoting?onlyLiked=true"
+    Check "a runoff with a single liked title is refused" ($roAgain.Status -eq 400 -and $roAgain.Body.Error -eq "NotEnoughLikedTitles") "status $($roAgain.Status) $($roAgain.Body | ConvertTo-Json -Compress)"
+    Check "the refused runoff leaves the results alone" ((Call $root GET "/SyncVote/Room/$($room.Id)").Body.IsVotingFinished -and (Call $root GET "/SyncVote/Room/$($room.Id)/Results").Body.Winner.ItemId -eq $items[1].Id)
+    $plain = Call $root POST "/SyncVote/Room/$($room.Id)/StartVoting"
+    $plainCand = Call $root GET "/SyncVote/Room/$($room.Id)/Candidates?limit=1"
+    Check "a normal new round goes back to every title" ($plain.Status -eq 200 -and -not $plain.Body.IsRunoff -and $plainCand.Body.TotalCount -gt 2) "runoff=$($plain.Body.IsRunoff) total=$($plainCand.Body.TotalCount)"
+    Call $root POST "/SyncVote/Room/$($room.Id)/EndVoting" | Out-Null
+
     Write-Host "== new round and close"
     $restart = Call $root POST "/SyncVote/Room/$($room.Id)/StartVoting"
     Check "organizer can start a new round" ($restart.Status -eq 200)

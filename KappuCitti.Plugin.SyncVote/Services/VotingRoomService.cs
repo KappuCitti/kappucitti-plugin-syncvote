@@ -191,8 +191,12 @@ public class VotingRoomService
     /// </summary>
     /// <param name="roomId">The room ID.</param>
     /// <param name="userId">The user asking.</param>
+    /// <param name="onlyLiked">
+    /// Runoff: vote again only on the titles that got at least one like in the round that just ended (there must be at least two).
+    /// Otherwise the round is about every candidate again.
+    /// </param>
     /// <returns>The updated room.</returns>
-    public OperationResult<VotingRoom> StartVoting(Guid roomId, Guid userId)
+    public OperationResult<VotingRoom> StartVoting(Guid roomId, Guid userId, bool onlyLiked = false)
     {
         lock (_lock)
         {
@@ -212,11 +216,19 @@ public class VotingRoomService
                 return OperationResult<VotingRoom>.Fail(RoomError.VotingAlreadyActive);
             }
 
+            // The ranking of the finished round is read before its votes are discarded.
+            var runoff = onlyLiked ? Rank(roomId).Select(x => x.ItemId).ToList() : new List<Guid>();
+            if (onlyLiked && runoff.Count < 2)
+            {
+                return OperationResult<VotingRoom>.Fail(RoomError.NotEnoughLikedTitles);
+            }
+
             _votes.RemoveAll(v => v.RoomId == roomId);
+            room.SetRunoffItems(runoff);
             room.IsVotingActive = true;
             room.IsVotingFinished = false;
             room.VotingStartedAt = Clock();
-            _logger.LogInformation("Voting started in room {RoomId} by user {UserId}", roomId, userId);
+            _logger.LogInformation("Voting started in room {RoomId} by user {UserId}{Runoff}", roomId, userId, onlyLiked ? $" (runoff between {runoff.Count} titles)" : string.Empty);
 
             return OperationResult<VotingRoom>.Ok(room.Snapshot(Clock()));
         }
@@ -313,6 +325,12 @@ public class VotingRoomService
                 return OperationResult<bool>.Fail(RoomError.UnknownItem);
             }
 
+            // The winner of a runoff is one of its titles, whatever a client sends.
+            if (room.IsRunoff && !room.RunoffItemIds.Contains(itemId))
+            {
+                return OperationResult<bool>.Fail(RoomError.UnknownItem);
+            }
+
             _votes.RemoveAll(v => v.RoomId == roomId && v.UserId == userId && v.ItemId == itemId);
             _votes.Add(new Vote
             {
@@ -358,23 +376,7 @@ public class VotingRoomService
                 return null;
             }
 
-            var ranked = _votes
-                .Where(v => v.RoomId == roomId)
-                .GroupBy(v => v.ItemId)
-                .Select(g => new
-                {
-                    ItemId = g.Key,
-                    Likes = g.Count(v => v.IsLike),
-                    Dislikes = g.Count(v => !v.IsLike),
-                    FirstLike = g.Where(v => v.IsLike).Select(v => v.VotedAt).DefaultIfEmpty(DateTime.MaxValue).Min()
-                })
-                .Where(x => x.Likes > 0)
-                .OrderByDescending(x => x.Likes)
-                .ThenBy(x => x.Dislikes)
-                .ThenBy(x => x.FirstLike)
-                .ToList();
-
-            var liked = ranked.Select(x =>
+            var liked = Rank(roomId).Select(x =>
             {
                 var info = _items.GetItem(x.ItemId);
                 return new VotedItem
@@ -415,6 +417,27 @@ public class VotingRoomService
             CanOrganize = isAdministrator || (overridden?.CanOrganize ?? config.DefaultCanOrganize),
             CanVote = isAdministrator || (overridden?.CanVote ?? config.DefaultCanVote)
         };
+    }
+
+    // The titles with at least one like, best first. Callers hold _lock.
+    private List<RankedItem> Rank(Guid roomId)
+    {
+        return _votes
+            .Where(v => v.RoomId == roomId)
+            .GroupBy(v => v.ItemId)
+            .Select(g => new
+            {
+                ItemId = g.Key,
+                Likes = g.Count(v => v.IsLike),
+                Dislikes = g.Count(v => !v.IsLike),
+                FirstLike = g.Where(v => v.IsLike).Select(v => v.VotedAt).DefaultIfEmpty(DateTime.MaxValue).Min()
+            })
+            .Where(x => x.Likes > 0)
+            .OrderByDescending(x => x.Likes)
+            .ThenBy(x => x.Dislikes)
+            .ThenBy(x => x.FirstLike)
+            .Select(x => new RankedItem(x.ItemId, x.Likes, x.Dislikes))
+            .ToList();
     }
 
     private static bool CanSee(VotingRoom room, Guid userId, string? syncPlayGroupId)
@@ -476,4 +499,6 @@ public class VotingRoomService
             }
         }
     }
+
+    private sealed record RankedItem(Guid ItemId, int Likes, int Dislikes);
 }

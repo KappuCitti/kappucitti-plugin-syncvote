@@ -17,7 +17,7 @@ Every endpoint needs a Jellyfin-authenticated user, like the rest of the Jellyfi
 | `GET /SyncVote/Rooms` | Anyone | The rooms the caller may see |
 | `GET /SyncVote/Room/{id}` | Anyone who may see it | One room |
 | `POST /SyncVote/Room/{id}/Join` | A member of the room's SyncPlay group | Join. Joining twice is fine |
-| `POST /SyncVote/Room/{id}/StartVoting` | The organizer | Start a round (a new round drops the previous votes) |
+| `POST /SyncVote/Room/{id}/StartVoting[?onlyLiked=true]` | The organizer | Start a round (a new round drops the previous votes). With `onlyLiked=true` it is a [runoff](#runoff) |
 | `POST /SyncVote/Room/{id}/EndVoting` | The organizer | End the round now |
 | `DELETE /SyncVote/Room/{id}` | The organizer or an administrator | Close the room |
 | `GET /SyncVote/Room/{id}/Candidates?skip=0&limit=20` | A member | The titles the caller has not voted on yet |
@@ -27,9 +27,20 @@ Every endpoint needs a Jellyfin-authenticated user, like the rest of the Jellyfi
 
 A room has `Id`, `Name`, `SyncPlayGroupId`, `OrganizerId`, `MemberIds`, `IsVotingActive`, `IsVotingFinished`, `TimeLimit`
 (minutes), `SecondsRemaining` (only while voting), `SortBy`, `SelectedCollections`, `SelectedGenres`, `MaxParentalRating`,
-`TitleFilter`, `ItemTypes`, `CreatedAt` and `VotingStartedAt`.
+`TitleFilter`, `ItemTypes`, `IsRunoff`, `RunoffItemIds`, `CreatedAt` and `VotingStartedAt`.
 
 The ranking orders titles by likes, then by fewer dislikes, then by who was liked first.
+
+### Runoff
+
+A runoff is a round about the titles that got at least one like in the round that just ended, so the group can settle a close
+call. `POST /SyncVote/Room/{id}/StartVoting?onlyLiked=true` starts it:
+
+- It needs a finished round with **at least two** liked titles; otherwise the answer is `400 NotEnoughLikedTitles` and nothing
+  changes (the results stay as they were).
+- The room then has `IsRunoff: true` and the titles in `RunoffItemIds`. `Candidates` only offers those, and a vote for any
+  other title is refused (`400 UnknownItem`). The votes of the previous round are dropped, like in any new round.
+- The next `StartVoting` without `onlyLiked` goes back to every title. A runoff after a runoff narrows it down again.
 
 ### CreateRoomRequest
 
@@ -69,7 +80,7 @@ Failures answer with a status and `{ "Error": "<code>" }`.
 
 | Status | Codes |
 |:---|:---|
-| 400 | `Invalid`, `NoCollectionSelected`, `VotingNotActive`, `UnknownItem` |
+| 400 | `Invalid`, `NoCollectionSelected`, `VotingNotActive`, `UnknownItem` (also a title outside the runoff), `NotEnoughLikedTitles` |
 | 401 | not authenticated |
 | 403 | `Forbidden`, `NotOrganizer`, `NotMember` |
 | 404 | `NotFound` (also for a room the caller may not see) |

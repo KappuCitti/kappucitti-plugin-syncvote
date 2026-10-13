@@ -158,11 +158,12 @@ public class SyncVoteController : ControllerBase
     /// Starts a voting round. Organizer only.
     /// </summary>
     /// <param name="roomId">The room ID.</param>
+    /// <param name="onlyLiked">Runoff: vote again only on the titles liked in the round that just ended (at least two).</param>
     /// <returns>The room.</returns>
     [HttpPost("Room/{roomId}/StartVoting")]
-    public ActionResult<VotingRoom> StartVoting([FromRoute] Guid roomId)
+    public ActionResult<VotingRoom> StartVoting([FromRoute] Guid roomId, [FromQuery] bool onlyLiked = false)
     {
-        var result = _rooms.StartVoting(roomId, CurrentUserId);
+        var result = _rooms.StartVoting(roomId, CurrentUserId, onlyLiked);
         return result.Succeeded ? Ok(result.Value) : Failure(result.Error);
     }
 

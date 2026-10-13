@@ -20,8 +20,10 @@ is the [README](README.md); this file is the short version of what an agent need
   language (`-ChangeServerLanguage`). Use isolated servers (`tests/e2e/new-server.ps1`).
 - **Security**: every endpoint needs Jellyfin authentication except the client files; organizer-only actions are checked in
   `VotingRoomService`; the SyncPlay group of a room is what the server sees for the user, never what the client sends.
-- **The client** only relies on `ApiClient`, the DOM of the SyncPlay menu (`.syncPlayGroupMenu`, `data-id="leave-group"`) and
-  Jellyfin's own CSS classes. `Dashboard.alert` cannot be used for dialogs (it forces a single OK button). Jellyfin lays the dialog
+- **The client** only relies on `ApiClient`, the DOM of the SyncPlay menu (`.syncPlayGroupMenu`, `data-id="leave-group"` in the
+  classic layout; `#app-sync-play-menu` and `#sync-play-active-subheader` in the Material UI one) and Jellyfin's own CSS classes.
+  The web client has two layouts (12 made the Material UI one the default): run `tests/e2e/ui-test.ps1` for `-Layout legacy` and
+  `-Layout modern` after touching the client. `Dashboard.alert` cannot be used for dialogs (it forces a single OK button). Jellyfin lays the dialog
   footer over the content, so `syncvote.css` makes it a normal flex item in our dialogs.
 - **The settings page's `<script>` must stay inside the `data-role="page"` element**, otherwise Jellyfin drops it.
 - **Texts** live in `Web/i18n/en.json` and `it.json` (same keys, checked by a test). The server picks the language.

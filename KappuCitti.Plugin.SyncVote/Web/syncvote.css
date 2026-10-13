@@ -264,6 +264,29 @@
     margin: 0.4em auto;
 }
 
+/* Jellyfin's "block" buttons put the icon on the baseline of the text, a few pixels too high, and a button that gets narrow wraps
+   its text under the icon. Icon and text are one centered line instead; when the row is too short the buttons go to the next row. */
+.svDialog .formDialogFooterItem {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4em;
+    white-space: nowrap;
+}
+
+.svDialog .formDialogFooterItem > .material-icons {
+    margin: 0;
+    flex: none;
+}
+
+/* The SyncVote entry of the Material UI SyncPlay menu: its icon is a font glyph with the size of the SVG icons around it. */
+.svMenuIcon {
+    display: block;
+    width: 1em;
+    height: 1em;
+    font-size: 1.5rem;
+    line-height: 1;
+}
 
 
 /* Not much height: poster on the left, text on the right. */

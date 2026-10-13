@@ -71,7 +71,8 @@ dotnet test KappuCitti.Plugin.SyncVote.Tests
 The unit tests link the version-independent plugin sources (rooms and votes, ranking, the clock, permissions, title matching,
 language choice, web client injection) and check that the translation files stay in step. They need no Jellyfin server.
 
-For the rest use [`tests/e2e`](../tests/e2e/README.md): API, the real web client in headless Chrome, and the settings.
+For the rest use [`tests/e2e`](../tests/e2e/README.md): API, the real web client in headless Chrome (once for each of its two
+layouts), and the settings.
 
 > [!WARNING]
 > Run the end-to-end scripts on a test server only. They create users, groups and rooms, and some change the server's display
@@ -83,8 +84,17 @@ For the rest use [`tests/e2e`](../tests/e2e/README.md): API, the real web client
   (an `IStartupFilter`). The middleware puts `<script src=".../SyncVote/Client/syncvote.js">` before `</body>` of `/web/` and
   `/web/index.html`.
 - The web client uses `ApiClient` (for the address and the token) and the DOM of the SyncPlay menu. It adds one entry to the
-  menu, closes the menu through the browser history exactly like Jellyfin's own entries do, and opens a dialog built with the
-  same markup and classes as Jellyfin's dialogs (`formDialog`, `emby-button`, `emby-input`…).
+  menu and opens a dialog built with the same markup and classes as Jellyfin's dialogs (`formDialog`, `emby-button`,
+  `emby-input`…). The menu is a different piece of the page in each web client layout, and the script handles both:
+  - **Classic layout** (10.10, 10.11 and 12's "obsolete" one): an action sheet (`.actionSheet.syncPlayGroupMenu`) that is closed
+    through the browser history, exactly like Jellyfin's own entries do. Only the menu of a group has `data-id="leave-group"`.
+  - **Material UI layout** (the default in 12, "experimental" in 10.x): a `ul[role=menu]` in `#app-sync-play-menu`. The menu of a
+    group has a header with the id `sync-play-active-subheader` (in 12 "leave group" is only an icon button, so its words cannot
+    be looked for). The entry is a copy of one of the native ones, so it gets their (generated) styles, and the menu is closed by
+    clicking its backdrop.
+  Both headers can be in the page at the same time, only one of them visible: look at what is on screen, not at what exists.
+- A **runoff** is a normal round limited to the titles that got a like (`VotingRoom.RunoffItemIds`). `VotingRoomService` decides
+  who is in it and refuses votes for anyone else; `LibraryService.GetCandidateIds` narrows its (cached) list.
 - A room belongs to the SyncPlay group the **server** sees for the caller (`ISyncPlayManager.ListGroups`). The client cannot
   choose it.
 - `LibraryService` builds the candidate list once per room (cached for a minute): the titles every member can see, filtered, in

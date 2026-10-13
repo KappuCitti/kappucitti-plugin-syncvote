@@ -173,12 +173,25 @@ public class LibraryService : IItemInfoProvider
 
     /// <summary>
     /// Gets the ordered IDs of the items every given member can see and that match the filters of a room.
-    /// The order is the same for every member.
+    /// The order is the same for every member. In a runoff only the titles of the runoff are left.
     /// </summary>
     /// <param name="room">The room.</param>
     /// <param name="members">The members; at least one.</param>
     /// <returns>The candidate IDs.</returns>
     public IReadOnlyList<Guid> GetCandidateIds(VotingRoom room, IReadOnlyList<JfUser> members)
+    {
+        var ids = GetFilteredIds(room, members);
+        if (!room.IsRunoff)
+        {
+            return ids;
+        }
+
+        // The cached list is about the filters of the room, whatever the round: the runoff narrows it down here.
+        var runoff = room.RunoffItemIds.ToHashSet();
+        return ids.Where(runoff.Contains).ToList();
+    }
+
+    private IReadOnlyList<Guid> GetFilteredIds(VotingRoom room, IReadOnlyList<JfUser> members)
     {
         if (members.Count == 0)
         {

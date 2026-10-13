@@ -48,7 +48,8 @@ if (-not $matrix) { throw "No target selected." }
 
 $project = "KappuCitti.Plugin.SyncVote/KappuCitti.Plugin.SyncVote.csproj"
 if (-not $ReleaseVersion) {
-    $ReleaseVersion = ([xml](Get-Content $project)).Project.PropertyGroup.ReleaseVersion | Where-Object { $_ } | Select-Object -First 1
+    # Select-Xml gives the text even when the element has attributes (it has a Condition); the property syntax would give the element.
+    $ReleaseVersion = (Select-Xml -Path $project -XPath "//ReleaseVersion" | Select-Object -First 1).Node.InnerText
 }
 if ($ReleaseVersion -notmatch '^\d+\.\d+\.\d+$') { throw "ReleaseVersion must look like 1.2.3 (got '$ReleaseVersion')." }
 

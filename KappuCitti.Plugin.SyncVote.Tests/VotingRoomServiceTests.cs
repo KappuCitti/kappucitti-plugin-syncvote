@@ -235,6 +235,131 @@ public class VotingRoomServiceTests
         Assert.Empty(_service.GetResults(room.Id)!.LikedItems);
     }
 
+    // ---- runoff
+
+    // A: two likes, B: one like and one dislike, C: only disliked.
+    private VotingRoom FinishedRoundWithTwoLikedTitles()
+    {
+        var room = RoomWithVotingOpen(Alice);
+        _service.CastVote(room.Id, Organizer, MovieA, true);
+        _service.CastVote(room.Id, Alice, MovieA, true);
+        _service.CastVote(room.Id, Organizer, MovieB, true);
+        _service.CastVote(room.Id, Alice, MovieB, false);
+        _service.CastVote(room.Id, Organizer, MovieC, false);
+        _service.CastVote(room.Id, Alice, MovieC, false);
+        Assert.True(_service.EndVoting(room.Id, Organizer).Succeeded);
+        return room;
+    }
+
+    [Fact]
+    public void Runoff_VotesAgainOnlyOnTheTitlesWithALike()
+    {
+        var room = FinishedRoundWithTwoLikedTitles();
+
+        var started = _service.StartVoting(room.Id, Organizer, onlyLiked: true);
+
+        Assert.True(started.Succeeded);
+        Assert.True(started.Value!.IsVotingActive);
+        Assert.True(started.Value.IsRunoff);
+        Assert.Equal(new[] { MovieA, MovieB }, started.Value.RunoffItemIds);
+        Assert.Empty(_service.GetResults(room.Id)!.LikedItems);
+        Assert.Empty(_service.GetVotedItemIds(room.Id, Organizer));
+    }
+
+    [Fact]
+    public void Runoff_NeedsAtLeastTwoLikedTitlesAndLeavesTheResultsAlone()
+    {
+        var room = RoomWithVotingOpen(Alice);
+        _service.CastVote(room.Id, Organizer, MovieA, true);
+        _service.CastVote(room.Id, Alice, MovieA, true);
+        _service.CastVote(room.Id, Organizer, MovieB, false);
+        _service.EndVoting(room.Id, Organizer);
+
+        var refused = _service.StartVoting(room.Id, Organizer, onlyLiked: true);
+
+        Assert.Equal(RoomError.NotEnoughLikedTitles, refused.Error);
+        var after = _service.GetRoom(room.Id)!;
+        Assert.True(after.IsVotingFinished);
+        Assert.False(after.IsRunoff);
+        Assert.Equal(MovieA, _service.GetResults(room.Id)!.Winner!.ItemId);
+    }
+
+    [Fact]
+    public void Runoff_NeedsARoundThatWasPlayed()
+    {
+        var room = NewRoom();
+        Assert.Equal(RoomError.NotEnoughLikedTitles, _service.StartVoting(room.Id, Organizer, onlyLiked: true).Error);
+        Assert.False(_service.GetRoom(room.Id)!.IsVotingActive);
+    }
+
+    [Fact]
+    public void Runoff_IsForTheOrganizerOnlyAndNotWhileVotingRuns()
+    {
+        var room = FinishedRoundWithTwoLikedTitles();
+        Assert.Equal(RoomError.NotOrganizer, _service.StartVoting(room.Id, Alice, onlyLiked: true).Error);
+
+        Assert.True(_service.StartVoting(room.Id, Organizer, onlyLiked: true).Succeeded);
+        Assert.Equal(RoomError.VotingAlreadyActive, _service.StartVoting(room.Id, Organizer, onlyLiked: true).Error);
+    }
+
+    [Fact]
+    public void Runoff_OnlyTakesVotesForItsOwnTitles()
+    {
+        var room = FinishedRoundWithTwoLikedTitles();
+        _service.StartVoting(room.Id, Organizer, onlyLiked: true);
+
+        Assert.Equal(RoomError.UnknownItem, _service.CastVote(room.Id, Alice, MovieC, true).Error);
+        Assert.True(_service.CastVote(room.Id, Alice, MovieB, true).Succeeded);
+        Assert.Equal(new[] { MovieB }, _service.GetResults(room.Id)!.LikedItems.Select(i => i.ItemId));
+    }
+
+    [Fact]
+    public void Runoff_CanNarrowDownAgain()
+    {
+        var room = RoomWithVotingOpen(Alice);
+        _service.CastVote(room.Id, Organizer, MovieA, true);
+        _service.CastVote(room.Id, Alice, MovieA, true);
+        _service.CastVote(room.Id, Organizer, MovieB, true);
+        _service.CastVote(room.Id, Alice, MovieC, true);
+        _service.EndVoting(room.Id, Organizer);
+        Assert.Equal(3, _service.StartVoting(room.Id, Organizer, onlyLiked: true).Value!.RunoffItemIds.Count);
+
+        // In the runoff Casablanca loses its likes.
+        _service.CastVote(room.Id, Organizer, MovieA, true);
+        _service.CastVote(room.Id, Alice, MovieB, true);
+        _service.CastVote(room.Id, Organizer, MovieC, false);
+        _service.CastVote(room.Id, Alice, MovieC, false);
+        _service.EndVoting(room.Id, Organizer);
+
+        var second = _service.StartVoting(room.Id, Organizer, onlyLiked: true).Value!;
+
+        Assert.Equal(new[] { MovieA, MovieB }, second.RunoffItemIds);
+    }
+
+    [Fact]
+    public void ANewRoundAfterARunoffGoesBackToEveryTitle()
+    {
+        var room = FinishedRoundWithTwoLikedTitles();
+        _service.StartVoting(room.Id, Organizer, onlyLiked: true);
+        _service.EndVoting(room.Id, Organizer);
+
+        var again = _service.StartVoting(room.Id, Organizer).Value!;
+
+        Assert.False(again.IsRunoff);
+        Assert.Empty(again.RunoffItemIds);
+    }
+
+    [Fact]
+    public void TheRunoffTitlesOfAReturnedRoomAreACopy()
+    {
+        var room = FinishedRoundWithTwoLikedTitles();
+        var started = _service.StartVoting(room.Id, Organizer, onlyLiked: true).Value!;
+
+        started.SetRunoffItems(Array.Empty<Guid>());
+
+        Assert.Equal(2, _service.GetRoom(room.Id)!.RunoffItemIds.Count);
+    }
+
     [Fact]
     public void EndVoting_NeedsARunningRoundAndTheOrganizer()
     {

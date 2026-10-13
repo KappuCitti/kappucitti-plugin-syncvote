@@ -29,6 +29,7 @@ It looks and feels like Jellyfin itself (same dialogs, same components) and spea
   randomly, by title, by rating or by premiere date.
 - **A time limit** (1 to 120 minutes) enforced by the server. The round ends by itself, the organizer can end it earlier,
   start a new round, or close the room.
+- **A runoff** when several titles got a like: one click and everybody votes again, only on those.
 - **One click to play** the winner in the SyncPlay group.
 - **Access check**: before creating the room the organizer is warned if somebody in the group cannot see the chosen
   libraries (without telling who).
@@ -43,7 +44,7 @@ It looks and feels like Jellyfin itself (same dialogs, same components) and spea
     <td width="50%"><img alt="Voting on a title" src="docs/images/voting.png"><br><sub><b>2.</b> Everybody swipes through the same titles.</sub></td>
   </tr>
   <tr>
-    <td colspan="2"><img alt="The results" src="docs/images/results.png"><br><sub><b>3.</b> The ranking, and a button to play the winner in the group.</sub></td>
+    <td colspan="2"><img alt="The results" src="docs/images/results.png"><br><sub><b>3.</b> The ranking, a button to play the winner in the group, and one to vote again only on the liked titles.</sub></td>
   </tr>
 </table>
 
@@ -70,8 +71,8 @@ release (`0.1.0` above). So **`0.1.0.0` is the build for Jellyfin 10.10 only**, 
 > Packages are not interchangeable. If you install by hand, take the one for your server: a 10.10 package on Jellyfin 10.11
 > or 12 loads but most features fail with errors, and a package for a newer generation does not load at all on an older server.
 
-SyncVote works in the **Jellyfin web client** (browsers and apps built on it). Native apps (Android, iOS, TV…) do not show
-the SyncVote entry yet.
+SyncVote works in the **Jellyfin web client** (browsers and apps built on it), in the new interface of Jellyfin 12 as well as
+in the classic one. Native apps (Android, iOS, TV…) do not show the SyncVote entry yet.
 
 ## Installation
 
@@ -95,7 +96,11 @@ That is all: the plugin adds its own script to the web client, no other plugin i
 4. The others open the same menu entry and join. When everybody is in, the organizer starts the voting.
 5. Like or dislike each title. The time left is shown on top.
 6. When the time is up (or the organizer stops it with the stop icon in the header) the results appear. The organizer can
-   **play the winner**, start a **new round**, or **close** the room.
+   **play the winner**, start a **runoff**, start a **new round**, or **close** the room.
+
+A **runoff** is a new round with only the titles that got at least one like, so the group can settle a close call. It is
+offered when two or more titles were liked, and the ranking of the runoff starts from zero. A **new round** goes back to the
+whole list.
 
 > [!TIP]
 > Turn on **Auto-start voting** in the plugin settings and the round starts as soon as every member of the SyncPlay group has
@@ -154,7 +159,8 @@ The user ids are in the address of the user's page in the dashboard.
 <details>
 <summary>I do not see the SyncVote entry</summary>
 
-- The entry is in the SyncPlay menu **of a group**: join or create a SyncPlay group first.
+- The entry is in the SyncPlay menu **of a group**: join or create a SyncPlay group first. In the new interface it is the first
+  item of the menu, above *Settings*.
 - Reload the page with `Ctrl+F5` after installing or updating.
 - Make sure *Add SyncVote to the web interface* is on (Dashboard → Plugins → SyncVote).
 - Open `https://your-server/SyncVote/Client/syncvote.js` in the browser: it should show JavaScript. If not, the plugin is not

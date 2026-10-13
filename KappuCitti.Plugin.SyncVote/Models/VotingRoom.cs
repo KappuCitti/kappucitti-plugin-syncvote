@@ -12,6 +12,7 @@ public class VotingRoom
     private readonly List<Guid> _selectedCollections = new();
     private readonly List<string> _selectedGenres = new();
     private readonly List<string> _itemTypes = new() { "Movie" };
+    private readonly List<Guid> _runoffItemIds = new();
     private int _timeLimit = 5;
 
     /// <summary>
@@ -92,6 +93,17 @@ public class VotingRoom
     /// Gets the item types to include in voting (Movie, Series, Episode).
     /// </summary>
     public IReadOnlyList<string> ItemTypes => _itemTypes.AsReadOnly();
+
+    /// <summary>
+    /// Gets the titles the current round is limited to: a runoff between the titles liked in the previous round.
+    /// Empty for a normal round, which votes on every candidate.
+    /// </summary>
+    public IReadOnlyList<Guid> RunoffItemIds => _runoffItemIds.AsReadOnly();
+
+    /// <summary>
+    /// Gets a value indicating whether the current round is a runoff.
+    /// </summary>
+    public bool IsRunoff => _runoffItemIds.Count > 0;
 
     /// <summary>
     /// Gets or sets the creation time (UTC).
@@ -190,6 +202,22 @@ public class VotingRoom
     }
 
     /// <summary>
+    /// Limits the next rounds to these titles; an empty list goes back to every candidate.
+    /// </summary>
+    /// <param name="ids">The item IDs.</param>
+    public void SetRunoffItems(IEnumerable<Guid> ids)
+    {
+        _runoffItemIds.Clear();
+        foreach (var id in ids)
+        {
+            if (id != Guid.Empty && !_runoffItemIds.Contains(id))
+            {
+                _runoffItemIds.Add(id);
+            }
+        }
+    }
+
+    /// <summary>
     /// Creates an independent copy, safe to hand out while the original keeps changing.
     /// </summary>
     /// <param name="now">The current time (UTC), used to compute <see cref="SecondsRemaining"/>.</param>
@@ -223,6 +251,7 @@ public class VotingRoom
         copy._selectedGenres.AddRange(_selectedGenres);
         copy._itemTypes.Clear();
         copy._itemTypes.AddRange(_itemTypes);
+        copy._runoffItemIds.AddRange(_runoffItemIds);
         return copy;
     }
 }
