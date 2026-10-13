@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question or help using SyncVote
+    url: https://github.com/KappuCitti/jellyfin-plugin-syncvote/discussions/categories/q-a
+    about: Not a bug? Ask in Discussions, so the answer stays findable for the next person.
+  - name: Idea that is still taking shape
+    url: https://github.com/KappuCitti/jellyfin-plugin-syncvote/discussions/categories/ideas
+    about: Talk it over first; a concrete request can then become a Feature request.
+  - name: Installation and usage
+    url: https://github.com/KappuCitti/jellyfin-plugin-syncvote#readme
+    about: The README covers installation, the compatibility table (one package per Jellyfin generation) and troubleshooting.

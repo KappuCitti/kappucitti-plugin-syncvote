@@ -1,0 +1,105 @@
+name: Bug report
+description: Something in SyncVote does not work as expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time! The more of the fields below you fill in, the faster the problem can be reproduced.
+        Questions are welcome too: ask them in [Discussions → Q&A](https://github.com/KappuCitti/jellyfin-plugin-syncvote/discussions/categories/q-a).
+        For ideas use the **Feature request** template, and to tell how it went use **Test report**.
+
+  - type: dropdown
+    id: jellyfin-generation
+    attributes:
+      label: Jellyfin server
+      description: SyncVote ships one package per Jellyfin generation, so this is the first thing to know.
+      options:
+        - "12.x"
+        - "10.11.x"
+        - "10.10.x"
+        - Other (say which in the description)
+    validations:
+      required: true
+
+  - type: input
+    id: jellyfin-version
+    attributes:
+      label: Exact Jellyfin version
+      description: Shown on the Dashboard home page.
+      placeholder: "12.2.0"
+    validations:
+      required: true
+
+  - type: input
+    id: syncvote-version
+    attributes:
+      label: SyncVote version
+      description: Dashboard → Plugins. The last digit is the Jellyfin generation (`.0` → 10.10, `.1` → 10.11, `.2` → 12).
+      placeholder: "0.1.1.2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: layout
+    attributes:
+      label: Web interface layout
+      description: Jellyfin 12 made the new (Material UI) interface the default; the classic one is still available.
+      options:
+        - New interface (Material UI)
+        - Classic interface
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: Browser or app
+      description: The browser (or app built on the Jellyfin web client) and the device, for example "Firefox 130 on Windows 11" or "Safari on iPhone". Native apps do not show SyncVote yet.
+      placeholder: "Chrome 130 on Android"
+    validations:
+      required: true
+
+  - type: input
+    id: group-size
+    attributes:
+      label: People in the room
+      description: How many people were in the SyncPlay group and in the voting room, and whether they use the same kind of client.
+      placeholder: "3 people, all in the SyncPlay group"
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Describe the problem. Screenshots or a short screen recording help a lot.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you did, step by step, starting from the SyncPlay group. Mention the filters you chose (libraries, genres, age rating, time limit…).
+      placeholder: |
+        1. Join a SyncPlay group
+        2. Open the SyncPlay menu → SyncVote
+        3. ...
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        - Browser console (F12 → Console), if something failed on screen.
+        - Jellyfin server log (Dashboard → Logs), the lines around the time of the problem. Look for `SyncVote`.
+
+        Remove anything private (addresses, user names) before pasting.
+      render: text

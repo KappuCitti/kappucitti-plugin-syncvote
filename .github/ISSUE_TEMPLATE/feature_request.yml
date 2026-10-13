@@ -1,0 +1,45 @@
+name: Feature request
+description: An idea to make SyncVote better.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas are welcome. Have a look at the [open issues](https://github.com/KappuCitti/jellyfin-plugin-syncvote/issues)
+        and at what is [not planned](https://github.com/KappuCitti/jellyfin-plugin-syncvote/blob/master/CONTRIBUTING.md#not-planned)
+        first: what you have in mind may already be there (or deliberately left out).
+        If the idea is still vague, you can talk it over in [Discussions → Ideas](https://github.com/KappuCitti/jellyfin-plugin-syncvote/discussions/categories/ideas) before opening a request.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way? Describe the situation, not the solution.
+      placeholder: "When we pick a movie, we always end up..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: How could SyncVote help? Sketches and mockups are fine.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other ways you thought about, or what you do today as a workaround.
+
+  - type: dropdown
+    id: help
+    attributes:
+      label: Would you like to help?
+      options:
+        - I can send a pull request
+        - I can test it when it is ready
+        - Just the idea for now
+    validations:
+      required: true

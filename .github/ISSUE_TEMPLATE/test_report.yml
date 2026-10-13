@@ -1,0 +1,63 @@
+name: Test report
+description: You tried SyncVote and want to tell how it went, good or bad.
+labels: ["testing"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        SyncVote is young and tested on few setups, so "it worked" is useful news too. One short report per setup is perfect.
+        If something broke, please use the **Bug report** template instead, it asks for what is needed to reproduce it.
+
+  - type: dropdown
+    id: result
+    attributes:
+      label: How did it go?
+      options:
+        - Everything worked
+        - It worked, with small problems
+        - It did not work
+    validations:
+      required: true
+
+  - type: input
+    id: setup
+    attributes:
+      label: Your setup
+      description: Jellyfin version, SyncVote version (Dashboard → Plugins), operating system or container image.
+      placeholder: "Jellyfin 10.11.11, SyncVote 0.1.1.1, Docker (linuxserver image)"
+    validations:
+      required: true
+
+  - type: input
+    id: clients
+    attributes:
+      label: Browsers and devices
+      description: Which ones the group used, and the interface layout (new or classic).
+      placeholder: "Firefox on Linux, Safari on iPhone, Chrome on Android; new interface"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: group-size
+    attributes:
+      label: People in the voting room
+      options:
+        - Just me (testing alone)
+        - 2
+        - 3-5
+        - 6 or more
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you tried
+      description: Filters, time limit, runoff, playing the winner in SyncPlay, a big library, users with parental controls…
+      placeholder: "Three of us voted on a 2000-movie library, then used the runoff and played the winner."
+
+  - type: textarea
+    id: feedback
+    attributes:
+      label: What was confusing, slow, or missing?
+      description: Anything that made you hesitate counts, even if it is not a bug.

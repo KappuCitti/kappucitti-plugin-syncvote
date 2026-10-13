@@ -1,12 +1,22 @@
 # Contributing
 
-Thanks for helping! Bug reports, ideas and pull requests are all welcome.
+Thanks for helping! Bug reports, ideas, test reports and pull requests are all welcome.
+
+## Where to go
+
+- **Something does not work:** open an [issue](https://github.com/KappuCitti/jellyfin-plugin-syncvote/issues/new/choose) with
+  the *Bug report* form.
+- **You tried it and want to tell how it went:** use the *Test report* form, good news is useful too.
+- **A question, or an idea that is still vague:** use [Discussions](https://github.com/KappuCitti/jellyfin-plugin-syncvote/discussions).
+  A concrete idea can be a *Feature request* issue; the [open issues](https://github.com/KappuCitti/jellyfin-plugin-syncvote/issues) show what is already planned
+  (look for `good first issue` and `help wanted` if you want to lend a hand).
 
 ## Report a problem
 
-Open an [issue](https://github.com/KappuCitti/kappucitti-plugin-syncvote/issues) with:
+The bug form asks for the following; it helps to have it at hand:
 
 - your Jellyfin version and the SyncVote package version (Dashboard → Plugins);
+- the web interface layout (new or classic) and the browser;
 - what you did, what you expected and what happened;
 - the browser console (F12) and the Jellyfin server log if something failed.
 
@@ -21,5 +31,19 @@ Open an [issue](https://github.com/KappuCitti/kappucitti-plugin-syncvote/issues)
 
 > [!NOTE]
 > Code comments, commit messages and documentation are in English.
+
+## Not planned
+
+SyncVote stays small on purpose. These are out of scope, so a request for them is likely to be declined:
+
+- Tournament brackets and other complex voting modes.
+- Recommendations across libraries and external rating services.
+- Jellyfin 10.8 and older: the plugin needs `IPluginServiceRegistrator`, which appeared in 10.9.
+
+## AI assistance
+
+SyncVote is developed with the help of AI coding tools. The maintainer reviews, tests and takes responsibility for everything
+that is merged, and [AGENTS.md](AGENTS.md) is the public brief those tools work from. You are welcome to use AI tools for your
+own contributions too, as long as you have read, understood and tried what you submit.
 
 Releases are made by the maintainer.

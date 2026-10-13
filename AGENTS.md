@@ -6,7 +6,7 @@ is the [README](README.md); this file is the short version of what an agent need
 ## Where to look
 
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): layout, the one-source-many-Jellyfin-versions build, tests, how the pieces fit.
-- [docs/API.md](docs/API.md): the HTTP API. [TODO.md](TODO.md): what is left.
+- [docs/API.md](docs/API.md): the HTTP API. [open issues](https://github.com/KappuCitti/jellyfin-plugin-syncvote/issues): what is left.
 - [tests/e2e/README.md](tests/e2e/README.md): end-to-end scripts (real server, real web client in headless Chrome).
 
 ## Rules of the house
@@ -34,4 +34,4 @@ is the [README](README.md); this file is the short version of what an agent need
 
 Working on Jellyfin 10.10, 10.11 and 12: rooms, voting with a server-side time limit, filters (library folders, collections,
 genres, age rating, title), results, playing the winner in SyncPlay, access checks, permissions, English and Italian.
-Rooms live in memory by design. See [TODO.md](TODO.md) for what is next.
+Rooms live in memory by design. See the [open issues](https://github.com/KappuCitti/jellyfin-plugin-syncvote/issues) for what is next.

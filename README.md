@@ -191,7 +191,7 @@ It only appears when your server has Jellyfin collections (box sets). Create one
 
 - [API reference](docs/API.md): the endpoints of the plugin.
 - [Development guide](docs/DEVELOPMENT.md): build, test, how the Jellyfin versions are supported.
-- [Contributing](CONTRIBUTING.md) and the [to-do list](TODO.md).
+- [Contributing](CONTRIBUTING.md) and the [open issues](https://github.com/KappuCitti/jellyfin-plugin-syncvote/issues) (what is planned).
 - [End-to-end tests](tests/e2e/README.md).
 
 ## License
