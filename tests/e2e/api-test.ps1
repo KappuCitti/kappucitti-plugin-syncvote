@@ -89,6 +89,7 @@ try {
 
     $rooms = Call $sv GET "/SyncVote/Rooms"
     Check "other member sees the room" (@($rooms.Body | Where-Object Id -eq $room.Id).Count -eq 1)
+    Check "the group info tells the room is in the lobby, to every member" ((Call $root GET "/SyncVote/SyncPlayInfo").Body.RoomState -eq "lobby" -and (Call $sv GET "/SyncVote/SyncPlayInfo").Body.RoomState -eq "lobby")
     $dup = Call $sv POST "/SyncVote/Room" @{ Name = "Altra"; SelectedCollections = @($col.Id) }
     Check "second organizer in same group refused" ($dup.Status -eq 409) "status $($dup.Status)"
 
@@ -116,6 +117,7 @@ try {
     Check "organizer starts voting" ($start.Status -eq 200 -and $start.Body.IsVotingActive -and $start.Body.SecondsRemaining -gt 100) "status $($start.Status) rem=$($start.Body.SecondsRemaining)"
     $again = Call $root POST "/SyncVote/Room/$($room.Id)/StartVoting"
     Check "starting twice is a conflict" ($again.Status -eq 409) "status $($again.Status)"
+    Check "the group info tells voting is on" ((Call $sv GET "/SyncVote/SyncPlayInfo").Body.RoomState -eq "voting")
 
     $v1 = Call $root POST "/SyncVote/Vote" @{ RoomId = $room.Id; ItemId = $items[0].Id; IsLike = $true }
     $v2 = Call $sv POST "/SyncVote/Vote" @{ RoomId = $room.Id; ItemId = $items[0].Id; IsLike = $true }
@@ -142,6 +144,7 @@ try {
     Check "non-organizer cannot end" ($endNo.Status -eq 403) "status $($endNo.Status)"
     $end = Call $root POST "/SyncVote/Room/$($room.Id)/EndVoting"
     Check "organizer ends voting" ($end.Status -eq 200 -and $end.Body.IsVotingFinished -and -not $end.Body.IsVotingActive) "status $($end.Status)"
+    Check "the group info tells the room is showing the results" ((Call $sv GET "/SyncVote/SyncPlayInfo").Body.RoomState -eq "results")
     $late = Call $sv POST "/SyncVote/Vote" @{ RoomId = $room.Id; ItemId = $items[3].Id; IsLike = $true }
     Check "vote after end refused" ($late.Status -eq 400) "status $($late.Status)"
 
@@ -196,6 +199,7 @@ try {
     Check "organizer closes the room" ($close.Status -eq 204) "status $($close.Status)"
     $gone = Call $root GET "/SyncVote/Room/$($room.Id)"
     Check "closed room is gone" ($gone.Status -eq 404) "status $($gone.Status)"
+    Check "the group info has no room state any more" ($null -eq (Call $sv GET "/SyncVote/SyncPlayInfo").Body.RoomState)
 
     Write-Host "== filters"
     $f = Call $root POST "/SyncVote/Room" @{ Name = "Filtri"; TimeLimit = 1; SortBy = "Title"; SelectedCollections = @($col.Id); SelectedGenres = @(@($g.Body)[0]); ItemTypes = @("Movie") }

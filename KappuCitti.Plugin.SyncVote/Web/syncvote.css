@@ -108,6 +108,11 @@
     user-select: none;
 }
 
+/* The dot of the SyncPlay button turns purple while the group has a SyncVote room to join or to vote in. */
+.MuiAppBar-root button[data-sv-room] .MuiBadge-badge {
+    background-color: #9c27b0 !important;
+}
+
 /* The poster that arrives after a vote. */
 .svCard.svEnter .svPosterBox {
     animation: svCardIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);

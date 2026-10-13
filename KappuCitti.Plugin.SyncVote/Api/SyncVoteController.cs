@@ -352,6 +352,7 @@ public class SyncVoteController : ControllerBase
             GroupId = group.GroupId,
             GroupName = group.Name,
             IsLeader = room?.OrganizerId == userId,
+            RoomState = room == null ? null : room.IsVotingActive ? "voting" : room.IsVotingFinished ? "results" : "lobby",
             MemberCount = group.MemberIds.Count,
             MemberUserIds = group.MemberIds.ToList()
         });

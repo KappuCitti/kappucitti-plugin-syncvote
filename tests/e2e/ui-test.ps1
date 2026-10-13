@@ -149,6 +149,15 @@ try {
     $members = Wait-Js "document.querySelector('#svLobbyMembers') && document.querySelector('#svLobbyMembers').innerText.startsWith('2')" 8
     Check "lobby shows the second member" ([bool]$members) (Js "document.querySelector('#svLobbyMembers').innerText")
     Save-Shot "$shots\04-lobby.png"
+    # The dot on the SyncPlay button (new layout only) is purple while the group has a room waiting or voting.
+    $dotColor = "(function(){ const i = document.querySelector('.MuiAppBar-root svg[data-testid=GroupsIcon]'); const d = i && i.closest('button') && i.closest('button').querySelector('.MuiBadge-badge'); return d ? getComputedStyle(d).backgroundColor : '' })()"
+    # Jellyfin 12 added the dot; the "experimental" layout of 10.x has none, so there is nothing to color there.
+    $hasDot = [bool](Js "(function(){ const i = document.querySelector('.MuiAppBar-root svg[data-testid=GroupsIcon]'); return !!(i && i.closest('button') && i.closest('button').querySelector('.MuiBadge-badge')) })()")
+    if ($modern -and $serverMajor -ge 12) { Check "the SyncPlay button has a dot while the group is joined" $hasDot }
+    if ($modern -and $hasDot) {
+        $purple = Wait-Js "($dotColor) === 'rgb(156, 39, 176)'" 10
+        Check "the dot of the SyncPlay button is purple while a room is open in the group" ([bool]$purple) (Js $dotColor)
+    }
 
     Write-Host "== voting"
     Js "document.querySelector('.svStart').click(); true" | Out-Null
@@ -350,6 +359,10 @@ try {
     Js "document.querySelector('.svCloseRoom').click(); true" | Out-Null
     Start-Sleep 1
     Check "closing the room removes it and the dialog" ((@((Call $root GET "/SyncVote/Rooms").Body).Count -eq 0) -and (Js "!document.querySelector('.svDialog')"))
+    if ($modern -and $hasDot) {
+        $normal = Wait-Js "($dotColor) !== 'rgb(156, 39, 176)' && ($dotColor) !== ''" 10
+        Check "with the room closed the dot is back to the color of the web client" ([bool]$normal) (Js $dotColor)
+    }
 
     $errors = $script:console | Where-Object { $_ -match '^\[(error|exception)\]' -and $_ -match 'SyncVote|syncvote' }
     Check "no SyncVote console errors" (-not $errors) ($errors -join " | ")

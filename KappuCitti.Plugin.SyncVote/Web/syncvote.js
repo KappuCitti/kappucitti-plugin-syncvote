@@ -245,7 +245,44 @@
         new MutationObserver(function () {
             self.injectMenuItem();
         }).observe(document.body, { childList: true, subtree: true });
+        setInterval(function () {
+            if (!document.hidden) {
+                self.updateBadge();
+            }
+        }, BADGE_POLL_MS);
         console.log(LOG, "ready");
+    };
+
+    // ----------------------------------------------------- SyncPlay badge
+
+    var BADGE_POLL_MS = 5000;
+
+    // The SyncPlay button of the new layout wears a dot while there is a group to join or a group joined. It is marked (and turned
+    // purple by the stylesheet) while the group has a SyncVote room that waits to start or is being voted on. The mark is an attribute
+    // of the button, which the web client does not manage, so its own re-renders leave it alone.
+    SyncVoteManager.prototype.updateBadge = function () {
+        var icon = document.querySelector('.MuiAppBar-root svg[data-testid="GroupsIcon"]');
+        var button = icon ? icon.closest("button") : null;
+        if (!button) {
+            return Promise.resolve();
+        }
+        var dot = button.querySelector(".MuiBadge-badge");
+        if (!dot || dot.classList.contains("MuiBadge-invisible")) {
+            button.removeAttribute("data-sv-room");
+            return Promise.resolve();
+        }
+        return call("GET", "SyncVote/SyncPlayInfo")
+            .then(function (info) {
+                var state = info && info.GroupId ? info.RoomState : null;
+                if (state === "lobby" || state === "voting") {
+                    button.setAttribute("data-sv-room", state);
+                } else {
+                    button.removeAttribute("data-sv-room");
+                }
+            })
+            .catch(function () {
+                /* keep what is shown until the next check */
+            });
     };
 
     SyncVoteManager.prototype.currentUserId = function () {
@@ -510,6 +547,7 @@
     };
 
     SyncVoteManager.prototype.render = function () {
+        this.updateBadge();
         var state = this.stateOf(this.room);
         if (state === "voting") {
             this.showVoting();
@@ -760,6 +798,7 @@
                 function () {
                     self.room = null;
                     dialog.close();
+                    self.updateBadge();
                 },
                 function (e) {
                     console.error(LOG, e);
@@ -884,7 +923,7 @@
             return Promise.resolve();
         }
         card.dataset.drag = isLike ? "like" : "dislike";
-        var dragged = /translateX\((-?[\d.]+)px\) rotate\((-?[\d.]+)deg\)/.exec(poster.style.transform);
+        var dragged =/translateX\((-?[\d.]+)px\) rotate\((-?[\d.]+)deg\)/.exec(poster.style.transform);
         if (dragged) {
             // Swiped by hand: it is already out of place and tilted, however far it was thrown. It carries on a little in the same
             // direction while it fades; flying to a fixed spot would bring a far-thrown poster back before it disappears.

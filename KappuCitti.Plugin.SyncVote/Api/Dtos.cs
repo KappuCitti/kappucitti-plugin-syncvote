@@ -209,6 +209,11 @@ public class SyncPlayInfo
     public bool IsLeader { get; set; }
 
     /// <summary>
+    /// Gets or sets the state of the voting room of the group: <c>lobby</c>, <c>voting</c> or <c>results</c>; null when the group has no room.
+    /// </summary>
+    public string? RoomState { get; set; }
+
+    /// <summary>
     /// Gets or sets the number of members in the group.
     /// </summary>
     public int MemberCount { get; set; }

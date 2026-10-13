@@ -60,7 +60,7 @@ call. `POST /SyncVote/Room/{id}/StartVoting?onlyLiked=true` starts it:
 
 | Method and path | What |
 |:---|:---|
-| `GET /SyncVote/SyncPlayInfo` | The SyncPlay group of the caller (`GroupId` is null outside a group), its members, and whether the caller organizes its room |
+| `GET /SyncVote/SyncPlayInfo` | The SyncPlay group of the caller (`GroupId` is null outside a group), its members, whether the caller organizes its room, and the state of that room (`RoomState`: `lobby`, `voting` or `results`, null when there is none) |
 | `POST /SyncVote/CheckAccess` | `{ "CollectionIds": [...] }`: can the other members of the group see them? Only yes or no, never who |
 | `GET /SyncVote/Permissions[?userId=]` | Whether a user can organize and vote. Another user's permissions: administrators only |
 | `GET /SyncVote/Library/Collections` | Library folders and collections the caller can see, with their size |
