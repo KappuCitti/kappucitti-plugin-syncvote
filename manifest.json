@@ -9,6 +9,30 @@
     "imageUrl": "https://raw.githubusercontent.com/KappuCitti/jellyfin-plugin-syncvote/master/images/logo.png",
     "versions": [
       {
+        "version": "0.1.2.2",
+        "changelog": "See release notes on GitHub",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/KappuCitti/jellyfin-plugin-syncvote/releases/download/0.1.2/0.1.2.2-SyncVote.zip",
+        "checksum": "0df1a8589b8c848c63459aeae02e753c",
+        "timestamp": "2026-10-13T20:10:34Z"
+      },
+      {
+        "version": "0.1.2.1",
+        "changelog": "See release notes on GitHub",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/KappuCitti/jellyfin-plugin-syncvote/releases/download/0.1.2/0.1.2.1-SyncVote.zip",
+        "checksum": "cf009daa3be36dc0c7fb4161ff32c879",
+        "timestamp": "2026-10-13T20:10:29Z"
+      },
+      {
+        "version": "0.1.2.0",
+        "changelog": "See release notes on GitHub",
+        "targetAbi": "10.10.0.0",
+        "sourceUrl": "https://github.com/KappuCitti/jellyfin-plugin-syncvote/releases/download/0.1.2/0.1.2.0-SyncVote.zip",
+        "checksum": "664235c547d03719cced9b79c1778039",
+        "timestamp": "2026-10-13T20:10:24Z"
+      },
+      {
         "version": "0.1.1.2",
         "changelog": "See release notes on GitHub",
         "targetAbi": "12.0.0.0",
