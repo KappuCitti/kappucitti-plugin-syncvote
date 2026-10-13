@@ -10,6 +10,7 @@ using MediaBrowser.Controller.Library;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace KappuCitti.Plugin.SyncVote.Api;
 
@@ -84,7 +85,7 @@ public class SyncVoteController : ControllerBase
 
         // The group is always the one the server sees for the user: the client cannot claim another one.
         var result = _rooms.CreateRoom(userId, CurrentGroup?.GroupId, request);
-        return result.Succeeded ? Ok(result.Value) : Failure(result.Error);
+        return result.Succeeded ? Ok(ForViewer(result.Value!)) : Failure(result.Error);
     }
 
     /// <summary>
@@ -94,7 +95,7 @@ public class SyncVoteController : ControllerBase
     [HttpGet("Rooms")]
     public ActionResult<IEnumerable<VotingRoom>> GetRooms()
     {
-        return Ok(_rooms.GetVisibleRooms(CurrentUserId, CurrentGroup?.GroupId, User.IsAdministrator()));
+        return Ok(_rooms.GetVisibleRooms(CurrentUserId, CurrentGroup?.GroupId, User.IsAdministrator()).Select(ForViewer).ToList());
     }
 
     /// <summary>
@@ -106,16 +107,17 @@ public class SyncVoteController : ControllerBase
     public ActionResult<VotingRoom> GetRoom([FromRoute] Guid roomId)
     {
         var room = FindVisibleRoom(roomId);
-        return room == null ? Failure(RoomError.NotFound) : Ok(room);
+        return room == null ? Failure(RoomError.NotFound) : Ok(ForViewer(room));
     }
 
     /// <summary>
-    /// Joins a voting room (joining twice is fine).
+    /// Joins a voting room (joining twice is fine). A room with a code needs it in the body; the administrators do not.
     /// </summary>
     /// <param name="roomId">The room ID.</param>
+    /// <param name="request">The code of the room, if it has one (in the body, so that it stays out of the addresses in the logs).</param>
     /// <returns>The room.</returns>
     [HttpPost("Room/{roomId}/Join")]
-    public ActionResult<VotingRoom> JoinRoom([FromRoute] Guid roomId)
+    public ActionResult<VotingRoom> JoinRoom([FromRoute] Guid roomId, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] JoinRoomRequest? request = null)
     {
         var userId = CurrentUserId;
         var room = FindVisibleRoom(roomId);
@@ -131,7 +133,14 @@ public class SyncVoteController : ControllerBase
             return Failure(RoomError.Forbidden);
         }
 
-        var joined = _rooms.JoinRoom(roomId, userId);
+        var joined = _rooms.JoinRoom(roomId, userId, request?.Code, User.IsAdministrator());
+        if (joined.Error == RoomError.TooManyAttempts)
+        {
+            var wait = _rooms.GetRetryAfterSeconds(roomId, userId);
+            Response.Headers["Retry-After"] = wait.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return StatusCode(StatusCodes.Status429TooManyRequests, new { Error = nameof(RoomError.TooManyAttempts), RetryAfterSeconds = wait });
+        }
+
         if (!joined.Succeeded)
         {
             return Failure(joined.Error);
@@ -151,7 +160,7 @@ public class SyncVoteController : ControllerBase
             }
         }
 
-        return Ok(updated);
+        return Ok(ForViewer(updated));
     }
 
     /// <summary>
@@ -164,7 +173,7 @@ public class SyncVoteController : ControllerBase
     public ActionResult<VotingRoom> StartVoting([FromRoute] Guid roomId, [FromQuery] bool onlyLiked = false)
     {
         var result = _rooms.StartVoting(roomId, CurrentUserId, onlyLiked);
-        return result.Succeeded ? Ok(result.Value) : Failure(result.Error);
+        return result.Succeeded ? Ok(ForViewer(result.Value!)) : Failure(result.Error);
     }
 
     /// <summary>
@@ -176,7 +185,7 @@ public class SyncVoteController : ControllerBase
     public ActionResult<VotingRoom> EndVoting([FromRoute] Guid roomId)
     {
         var result = _rooms.EndVoting(roomId, CurrentUserId);
-        return result.Succeeded ? Ok(result.Value) : Failure(result.Error);
+        return result.Succeeded ? Ok(ForViewer(result.Value!)) : Failure(result.Error);
     }
 
     /// <summary>
@@ -238,6 +247,12 @@ public class SyncVoteController : ControllerBase
         if (room == null || results == null)
         {
             return Failure(RoomError.NotFound);
+        }
+
+        // The ranking of a room with a code is for the people who got in with it.
+        if (room.RequiresCode && !room.MemberIds.Contains(CurrentUserId) && !User.IsAdministrator())
+        {
+            return Failure(RoomError.NotMember);
         }
 
         if (results.Winner != null)
@@ -422,6 +437,18 @@ public class SyncVoteController : ControllerBase
         });
     }
 
+    // The code of a room goes only to the organizer and to the administrators: everybody else just gets to know that the room has one.
+    // Every room that leaves the controller goes through here.
+    private VotingRoom ForViewer(VotingRoom room)
+    {
+        if (room.RequiresCode && (room.OrganizerId == CurrentUserId || User.IsAdministrator()))
+        {
+            room.Code = _rooms.GetCode(room.Id);
+        }
+
+        return room;
+    }
+
     private VotingRoom? FindVisibleRoom(Guid roomId)
     {
         var room = _rooms.GetRoom(roomId);
@@ -444,7 +471,8 @@ public class SyncVoteController : ControllerBase
         var status = error switch
         {
             RoomError.NotFound => StatusCodes.Status404NotFound,
-            RoomError.NotMember or RoomError.NotOrganizer or RoomError.Forbidden => StatusCodes.Status403Forbidden,
+            RoomError.NotMember or RoomError.NotOrganizer or RoomError.Forbidden or RoomError.CodeRequired or RoomError.WrongCode => StatusCodes.Status403Forbidden,
+            RoomError.TooManyAttempts => StatusCodes.Status429TooManyRequests,
             RoomError.VotingAlreadyActive or RoomError.GroupHasRoom or RoomError.RoomFull => StatusCodes.Status409Conflict,
             _ => StatusCodes.Status400BadRequest
         };

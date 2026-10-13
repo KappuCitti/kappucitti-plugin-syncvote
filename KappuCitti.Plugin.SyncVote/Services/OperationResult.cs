@@ -42,7 +42,16 @@ public enum RoomError
     NotEnoughLikedTitles,
 
     /// <summary>The request is not valid.</summary>
-    Invalid
+    Invalid,
+
+    /// <summary>The room needs a code and none was given.</summary>
+    CodeRequired,
+
+    /// <summary>The code is not the one of the room.</summary>
+    WrongCode,
+
+    /// <summary>Too many wrong codes: wait before trying again.</summary>
+    TooManyAttempts
 }
 
 /// <summary>

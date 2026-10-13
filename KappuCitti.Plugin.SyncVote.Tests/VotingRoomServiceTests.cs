@@ -609,18 +609,4 @@ public class VotingRoomServiceTests
         // Every user ended on a dislike (the last i is odd): nobody likes the movie any more.
         Assert.Empty(_service.GetResults(room.Id)!.LikedItems);
     }
-
-    private sealed class FakeSettings : IPluginSettings
-    {
-        public PluginConfiguration Configuration { get; } = new();
-    }
-
-    private sealed class FakeItems : IItemInfoProvider
-    {
-        private readonly Dictionary<Guid, ItemInfo> _items = new();
-
-        public void Add(Guid id, string name, int year) => _items[id] = new ItemInfo(name, year, "Movie");
-
-        public ItemInfo? GetItem(Guid itemId) => _items.TryGetValue(itemId, out var item) ? item : null;
-    }
 }

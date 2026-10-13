@@ -243,7 +243,81 @@ try {
     Check "a title nobody has gives an empty list, not an error" ($noneList.Status -eq 200 -and $noneList.Body.TotalCount -eq 0)
     Call $root DELETE "/SyncVote/Room/$($none.Body.Id)" | Out-Null
 
+    Write-Host "== room code"
+    # svtest (not an administrator) organizes; root is an administrator; two more ordinary users are in the SyncPlay group.
+    foreach ($n in 3, 4) {
+        $old = Invoke-RestMethod "$Base/Users" -Headers $root.Headers | Where-Object Name -eq "svtest$n"
+        if ($old) { Invoke-RestMethod "$Base/Users/$($old.Id)" -Method Delete -Headers $root.Headers | Out-Null }
+        Set-Variable "created$n" (Invoke-RestMethod "$Base/Users/New" -Method Post -Headers $root.Headers -ContentType "application/json" -Body (@{ Name = "svtest$n"; Password = "svtest-pw" } | ConvertTo-Json))
+        Set-Variable "u$n" (Login "svtest$n" "svtest-pw" "dev$n")
+        Call (Get-Variable "u$n" -ValueOnly) POST "/SyncPlay/Join" @{ GroupId = $gid } | Out-Null
+    }
+    $c3 = $u3; $c4 = $u4
+
+    $coded = Call $sv POST "/SyncVote/Room" @{ Name = "Con codice"; TimeLimit = 3; SelectedCollections = @($col.Id); RequireCode = $true }
+    $code = $coded.Body.Code
+    Check "a room can ask for a code, and the organizer gets the 6-digit code" ($coded.Status -eq 200 -and $coded.Body.RequiresCode -and $code -match '^\d{6}$') ($coded.Body | ConvertTo-Json -Compress)
+    Check "the code is for the whole SyncPlay session by default" ($coded.Body.CodeScope -in "Session", 0)
+    $asAdmin = Call $root GET "/SyncVote/Room/$($coded.Body.Id)"
+    Check "an administrator sees the code too" ($asAdmin.Body.Code -eq $code) ($asAdmin.Body | ConvertTo-Json -Compress)
+    $asUser = Call $c3 GET "/SyncVote/Room/$($coded.Body.Id)"
+    Check "anybody else sees that the room asks for a code, not the code" ($asUser.Status -eq 200 -and $asUser.Body.RequiresCode -and $null -eq $asUser.Body.Code -and -not ($asUser.Body | ConvertTo-Json -Depth 6).Contains($code))
+    $inList = (Call $c3 GET "/SyncVote/Rooms").Body | ConvertTo-Json -Depth 6
+    Check "the list of rooms does not carry the code for them either" (-not $inList.Contains($code))
+    $sp = (Call $c3 GET "/SyncVote/SyncPlayInfo").Body | ConvertTo-Json -Depth 6
+    Check "nor does the SyncPlay group info" (-not $sp.Contains($code))
+
+    $noCode = Call $c3 POST "/SyncVote/Room/$($coded.Body.Id)/Join"
+    Check "joining without the code is refused" ($noCode.Status -eq 403 -and $noCode.Body.Error -eq "CodeRequired") "status $($noCode.Status) $($noCode.Body | ConvertTo-Json -Compress)"
+    $wrong = Call $c3 POST "/SyncVote/Room/$($coded.Body.Id)/Join" @{ Code = "000000" }
+    Check "a wrong code is refused" ($wrong.Status -eq 403 -and $wrong.Body.Error -eq "WrongCode") "status $($wrong.Status) $($wrong.Body | ConvertTo-Json -Compress)"
+    Check "without it there are no titles, no ranking and no votes" ((Call $c3 GET "/SyncVote/Room/$($coded.Body.Id)/Candidates?limit=5").Status -eq 403 -and (Call $c3 GET "/SyncVote/Room/$($coded.Body.Id)/Results").Status -eq 403)
+    $rightWithSpaces = Call $c3 POST "/SyncVote/Room/$($coded.Body.Id)/Join" @{ Code = $code.Insert(3, " ") }
+    Check "the right code gets in (spaces do not matter)" ($rightWithSpaces.Status -eq 200 -and @($rightWithSpaces.Body.MemberIds) -contains $c3.UserId) "status $($rightWithSpaces.Status)"
+    Check "and the code is still not in the answer" ($null -eq $rightWithSpaces.Body.Code)
+    Check "a member sees the titles and the ranking" ((Call $c3 GET "/SyncVote/Room/$($coded.Body.Id)/Candidates?limit=5").Status -eq 200 -and (Call $c3 GET "/SyncVote/Room/$($coded.Body.Id)/Results").Status -eq 200)
+    Check "a member does not need the code again" ((Call $c3 POST "/SyncVote/Room/$($coded.Body.Id)/Join").Status -eq 200)
+    $adminIn = Call $root POST "/SyncVote/Room/$($coded.Body.Id)/Join"
+    Check "an administrator gets in without the code" ($adminIn.Status -eq 200 -and $adminIn.Body.Code -eq $code) "status $($adminIn.Status)"
+
+    # Guessing: five wrong codes are free, then the user waits (even with the right code), and is told for how long.
+    for ($i = 0; $i -lt 5; $i++) { Call $c4 POST "/SyncVote/Room/$($coded.Body.Id)/Join" @{ Code = "00000$i" } | Out-Null }
+    $locked = Invoke-WebRequest "$Base/SyncVote/Room/$($coded.Body.Id)/Join" -Method Post -Headers $c4.Headers -ContentType "application/json" -Body (@{ Code = $code } | ConvertTo-Json) -SkipHttpErrorCheck
+    $lockedBody = $locked.Content | ConvertFrom-Json
+    Check "after five wrong codes the user has to wait, even with the right one" ($locked.StatusCode -eq 429 -and $lockedBody.Error -eq "TooManyAttempts" -and $lockedBody.RetryAfterSeconds -gt 0 -and [int]($locked.Headers["Retry-After"] | Select-Object -First 1) -gt 0) "status $($locked.StatusCode) $($locked.Content)"
+    Check "the wait of one user does not stop the others" ((Call $sv GET "/SyncVote/Room/$($coded.Body.Id)").Status -eq 200 -and (Call $c3 POST "/SyncVote/Room/$($coded.Body.Id)/Join").Status -eq 200)
+
+    # The same code serves the next room of the SyncPlay group, and whoever entered it does not enter it again.
+    Call $sv DELETE "/SyncVote/Room/$($coded.Body.Id)" | Out-Null
+    $again = Call $sv POST "/SyncVote/Room" @{ Name = "Ancora"; TimeLimit = 3; SelectedCollections = @($col.Id); RequireCode = $true; CodeScope = "Session" }
+    Check "the next room of the group has the same code" ($again.Body.Code -eq $code) "first $code, now $($again.Body.Code)"
+    Check "who already entered it joins without it" ((Call $c3 POST "/SyncVote/Room/$($again.Body.Id)/Join").Status -eq 200)
+    Check "who did not still needs it" ((Call $c4 POST "/SyncVote/Room/$($again.Body.Id)/Join").Status -in 403, 429)
+
+    # A code for each round: a new code when a new round follows a finished one, and only the organizer stays in.
+    Call $sv DELETE "/SyncVote/Room/$($again.Body.Id)" | Out-Null
+    $round = Call $sv POST "/SyncVote/Room" @{ Name = "Turni"; TimeLimit = 3; SelectedCollections = @($col.Id); RequireCode = $true; CodeScope = "Round" }
+    $firstCode = $round.Body.Code
+    Check "a code for each round is a code of its own" ($round.Body.RequiresCode -and $firstCode -match '^\d{6}$' -and $firstCode -ne $code) "$($round.Body | ConvertTo-Json -Compress)"
+    Check "who knows it gets in" ((Call $c3 POST "/SyncVote/Room/$($round.Body.Id)/Join" @{ Code = $firstCode }).Status -eq 200)
+    $r1 = Call $sv POST "/SyncVote/Room/$($round.Body.Id)/StartVoting"
+    Check "the first round keeps the people who came in" ($r1.Status -eq 200 -and $r1.Body.Code -eq $firstCode -and @($r1.Body.MemberIds) -contains $c3.UserId)
+    Call $sv POST "/SyncVote/Room/$($round.Body.Id)/EndVoting" | Out-Null
+    $r2 = Call $sv POST "/SyncVote/Room/$($round.Body.Id)/StartVoting"
+    Check "the next round has a new code" ($r2.Status -eq 200 -and $r2.Body.Code -match '^\d{6}$' -and $r2.Body.Code -ne $firstCode) "$firstCode -> $($r2.Body.Code)"
+    Check "and only the organizer is left in" (@($r2.Body.MemberIds).Count -eq 1 -and @($r2.Body.MemberIds)[0] -eq $sv.UserId)
+    Check "whoever voted before cannot vote again without the new code" ((Call $c3 POST "/SyncVote/Vote" @{ RoomId = $round.Body.Id; ItemId = $items[0].Id; IsLike = $true }).Status -eq 403)
+    Check "the old code is not good any more" ((Call $c3 POST "/SyncVote/Room/$($round.Body.Id)/Join" @{ Code = $firstCode }).Status -eq 403)
+    Check "the new one is" ((Call $c3 POST "/SyncVote/Room/$($round.Body.Id)/Join" @{ Code = $r2.Body.Code }).Status -eq 200)
+    Check "a member can vote" ((Call $c3 POST "/SyncVote/Vote" @{ RoomId = $round.Body.Id; ItemId = $items[0].Id; IsLike = $true }).Status -eq 204)
+    Call $sv DELETE "/SyncVote/Room/$($round.Body.Id)" | Out-Null
+    $plainRoom = Call $sv POST "/SyncVote/Room" @{ Name = "Senza"; SelectedCollections = @($col.Id) }
+    Check "a room that does not ask for a code has none to show" ($plainRoom.Body.RequiresCode -eq $false -and $null -eq $plainRoom.Body.Code)
+    Check "and lets anybody of the group in, as before" ((Call $c4 POST "/SyncVote/Room/$($plainRoom.Body.Id)/Join").Status -eq 200)
+    Call $sv DELETE "/SyncVote/Room/$($plainRoom.Body.Id)" | Out-Null
+
     Write-Host "== leave group"
+    Call $c3 POST "/SyncPlay/Leave" | Out-Null; Call $c4 POST "/SyncPlay/Leave" | Out-Null
     $lv = Call $sv POST "/SyncPlay/Leave"
     $i2 = Call $sv GET "/SyncVote/SyncPlayInfo"
     Check "after leaving, no group" (-not $i2.Body.GroupId) "got $($i2.Body.GroupId)"
@@ -263,7 +337,10 @@ finally {
             if ($lib) { Invoke-WebRequest "$Base/Library/VirtualFolders?name=$([uri]::EscapeDataString($lib.Name))&refreshLibrary=false" -Method Delete -Headers $root.Headers -SkipHttpErrorCheck | Out-Null }
         }
     }
-    if (-not $KeepUser) { Invoke-RestMethod "$Base/Users/$($created.Id)" -Method Delete -Headers $root.Headers | Out-Null; Write-Host "temporary user removed" }
+    if (-not $KeepUser) {
+        foreach ($extra in $created3, $created4) { if ($extra) { Invoke-RestMethod "$Base/Users/$($extra.Id)" -Method Delete -Headers $root.Headers | Out-Null } }
+        Invoke-RestMethod "$Base/Users/$($created.Id)" -Method Delete -Headers $root.Headers | Out-Null; Write-Host "temporary users removed"
+    }
 }
 
 Write-Host ""

@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using KappuCitti.Plugin.SyncVote.Api;
 using KappuCitti.Plugin.SyncVote.Infrastructure;
 using KappuCitti.Plugin.SyncVote.Models;
@@ -17,12 +20,24 @@ public class VotingRoomService
     private static readonly TimeSpan FinishedRoomLifetime = TimeSpan.FromHours(6);
     private static readonly TimeSpan MaxRoomLifetime = TimeSpan.FromHours(24);
 
+    // Wrong codes: this many are free, then the user is locked out for 30 s, doubling with each further mistake up to 30 min.
+    // A code has 1,000,000 values, so this keeps guessing it from one account out of reach.
+    private const int FreeAttempts = 5;
+    private const int FirstLockSeconds = 30;
+    private const int MaxLockSeconds = 1800;
+    private static readonly TimeSpan AttemptMemory = TimeSpan.FromHours(1);
+
     private readonly object _lock = new();
     private readonly ILogger<VotingRoomService> _logger;
     private readonly IItemInfoProvider _items;
     private readonly IPluginSettings _settings;
     private readonly List<VotingRoom> _rooms = new();
     private readonly List<Vote> _votes = new();
+
+    // Room codes live only here, in memory, and are never logged or put on a room: see GetCode.
+    private readonly Dictionary<Guid, CodeState> _roomCodes = new();
+    private readonly Dictionary<string, CodeState> _groupCodes = new();
+    private readonly Dictionary<(Guid Room, Guid User), AttemptState> _attempts = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="VotingRoomService"/> class.
@@ -41,6 +56,11 @@ public class VotingRoomService
     /// Gets or sets the clock (UTC); replaceable for tests.
     /// </summary>
     public Func<DateTime> Clock { get; set; } = () => DateTime.UtcNow;
+
+    /// <summary>
+    /// Gets or sets the generator of room codes (6 digits, from a cryptographic random source); replaceable for tests.
+    /// </summary>
+    public Func<string> CodeGenerator { get; set; } = () => RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// Creates a new voting room. A user's previous room for the same SyncPlay group is closed;
@@ -102,6 +122,20 @@ public class VotingRoomService
             room.SetSelectedGenres(request.SelectedGenres ?? new List<string>());
             room.SetItemTypes(request.ItemTypes ?? new List<string>());
 
+            if (request.RequireCode)
+            {
+                room.RequiresCode = true;
+                room.CodeScope = Enum.TryParse<RoomCodeScope>(request.CodeScope, true, out var scope) && Enum.IsDefined(scope) ? scope : RoomCodeScope.Session;
+
+                // A code for the whole SyncPlay session is the code of the group: every room of the group has it, and whoever
+                // has entered it stays in. Otherwise the room has a code of its own.
+                var state = room.CodeScope == RoomCodeScope.Session && room.SyncPlayGroupId != null
+                    ? GroupCode(room.SyncPlayGroupId)
+                    : new CodeState(CodeGenerator(), Clock());
+                state.Verified.Add(organizerId);
+                _roomCodes[room.Id] = state;
+            }
+
             _rooms.Add(room);
             _logger.LogInformation("Created voting room {RoomId} by user {UserId}", room.Id, organizerId);
 
@@ -145,6 +179,35 @@ public class VotingRoomService
     }
 
     /// <summary>
+    /// Gets the code of a room. It is meant for the organizer and the administrators only: callers decide who may see it.
+    /// </summary>
+    /// <param name="roomId">The room ID.</param>
+    /// <returns>The code (6 digits), or null when the room does not exist or has no code.</returns>
+    public string? GetCode(Guid roomId)
+    {
+        lock (_lock)
+        {
+            return FindActive(roomId) != null && _roomCodes.TryGetValue(roomId, out var state) ? state.Code : null;
+        }
+    }
+
+    /// <summary>
+    /// Gets how many seconds a user still has to wait before trying a code again (0 when they can try).
+    /// </summary>
+    /// <param name="roomId">The room ID.</param>
+    /// <param name="userId">The user.</param>
+    /// <returns>The seconds to wait.</returns>
+    public int GetRetryAfterSeconds(Guid roomId, Guid userId)
+    {
+        lock (_lock)
+        {
+            return _attempts.TryGetValue((roomId, userId), out var attempt) && attempt.LockedUntil > Clock()
+                ? (int)Math.Ceiling((attempt.LockedUntil - Clock()).TotalSeconds)
+                : 0;
+        }
+    }
+
+    /// <summary>
     /// Gets whether a user may look at a room.
     /// </summary>
     /// <param name="room">The room.</param>
@@ -156,12 +219,15 @@ public class VotingRoomService
         => isAdministrator || _settings.Configuration.AllowPublicRooms || CanSee(room, userId, syncPlayGroupId);
 
     /// <summary>
-    /// Joins a user to a room. Joining a room twice is not an error.
+    /// Joins a user to a room. Joining a room twice is not an error. A room with a code lets in only the people who give it
+    /// (and the administrators, who can see it anyway); after a few wrong codes the user has to wait.
     /// </summary>
     /// <param name="roomId">The room ID.</param>
     /// <param name="userId">The user ID.</param>
+    /// <param name="code">The code of the room, if the room has one.</param>
+    /// <param name="isAdministrator">Whether the user is a server administrator.</param>
     /// <returns>The updated room.</returns>
-    public OperationResult<VotingRoom> JoinRoom(Guid roomId, Guid userId)
+    public OperationResult<VotingRoom> JoinRoom(Guid roomId, Guid userId, string? code = null, bool isAdministrator = false)
     {
         lock (_lock)
         {
@@ -173,6 +239,11 @@ public class VotingRoomService
 
             if (!room.MemberIds.Contains(userId))
             {
+                if (room.RequiresCode && !isAdministrator && !CheckCode(room, userId, code, out var codeError))
+                {
+                    return OperationResult<VotingRoom>.Fail(codeError);
+                }
+
                 if (room.MemberIds.Count >= Math.Max(1, _settings.Configuration.MaxRoomMembers))
                 {
                     return OperationResult<VotingRoom>.Fail(RoomError.RoomFull);
@@ -221,6 +292,13 @@ public class VotingRoomService
             if (onlyLiked && runoff.Count < 2)
             {
                 return OperationResult<VotingRoom>.Fail(RoomError.NotEnoughLikedTitles);
+            }
+
+            // A code "for each round" changes when a new round follows a finished one: the people who voted before have to enter
+            // the new code to vote again. The first round keeps the people who entered the code in the lobby.
+            if (room.RequiresCode && room.CodeScope == RoomCodeScope.Round && room.IsVotingFinished)
+            {
+                RotateCode(room);
             }
 
             _votes.RemoveAll(v => v.RoomId == roomId);
@@ -440,6 +518,100 @@ public class VotingRoomService
             .ToList();
     }
 
+    // True when the user may get into a room that has a code: they already proved they know it, or they give it now.
+    // Callers hold _lock.
+    private bool CheckCode(VotingRoom room, Guid userId, string? code, out RoomError error)
+    {
+        error = RoomError.None;
+        if (!_roomCodes.TryGetValue(room.Id, out var state))
+        {
+            // A room that asks for a code always has one; if it does not, nobody gets in.
+            error = RoomError.Forbidden;
+            return false;
+        }
+
+        var now = Clock();
+        if (state.Verified.Contains(userId))
+        {
+            return true;
+        }
+
+        var key = (room.Id, userId);
+        _attempts.TryGetValue(key, out var attempt);
+        if (attempt != null && now - attempt.Last > AttemptMemory)
+        {
+            _attempts.Remove(key);
+            attempt = null;
+        }
+
+        if (attempt != null && attempt.LockedUntil > now)
+        {
+            error = RoomError.TooManyAttempts;
+            return false;
+        }
+
+        var digits = new string((code ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (digits.Length == 0)
+        {
+            error = RoomError.CodeRequired;
+            return false;
+        }
+
+        // Compared in constant time, so the time it takes says nothing about how much of the code is right.
+        if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(digits), Encoding.UTF8.GetBytes(state.Code)))
+        {
+            attempt ??= _attempts[key] = new AttemptState();
+            attempt.Failures++;
+            attempt.Last = now;
+            if (attempt.Failures >= FreeAttempts)
+            {
+                var seconds = Math.Min(MaxLockSeconds, FirstLockSeconds * Math.Pow(2, Math.Min(attempt.Failures - FreeAttempts, 10)));
+                attempt.LockedUntil = now.AddSeconds(seconds);
+            }
+
+            _logger.LogInformation("Wrong code for room {RoomId} from user {UserId} ({Failures} in a row)", room.Id, userId, attempt.Failures);
+            error = RoomError.WrongCode;
+            return false;
+        }
+
+        _attempts.Remove(key);
+        state.Verified.Add(userId);
+        state.Touched = now;
+        return true;
+    }
+
+    // The code of a SyncPlay group, made the first time a room of the group asks for one. Callers hold _lock.
+    private CodeState GroupCode(string groupId)
+    {
+        if (!_groupCodes.TryGetValue(groupId, out var state))
+        {
+            state = new CodeState(CodeGenerator(), Clock());
+            _groupCodes[groupId] = state;
+        }
+
+        state.Touched = Clock();
+        return state;
+    }
+
+    // A new code for the next round: only the organizer keeps the right to vote. Callers hold _lock.
+    private void RotateCode(VotingRoom room)
+    {
+        var state = new CodeState(CodeGenerator(), Clock());
+        state.Verified.Add(room.OrganizerId);
+        _roomCodes[room.Id] = state;
+        foreach (var member in room.MemberIds.Where(id => id != room.OrganizerId).ToList())
+        {
+            room.RemoveMember(member);
+        }
+
+        foreach (var key in _attempts.Keys.Where(k => k.Room == room.Id).ToList())
+        {
+            _attempts.Remove(key);
+        }
+
+        _logger.LogInformation("New code for the next round of room {RoomId}", room.Id);
+    }
+
     private static bool CanSee(VotingRoom room, Guid userId, string? syncPlayGroupId)
         => room.OrganizerId == userId
            || room.MemberIds.Contains(userId)
@@ -477,6 +649,12 @@ public class VotingRoomService
         room.IsActive = false;
         room.IsVotingActive = false;
         _votes.RemoveAll(v => v.RoomId == room.Id);
+        _roomCodes.Remove(room.Id);
+        foreach (var key in _attempts.Keys.Where(k => k.Room == room.Id).ToList())
+        {
+            _attempts.Remove(key);
+        }
+
         _logger.LogInformation("Closed voting room {RoomId}", room.Id);
     }
 
@@ -498,7 +676,43 @@ public class VotingRoomService
                 _rooms.Remove(room);
             }
         }
+
+        // The code of a group is forgotten a day after it was last used, when no room needs it.
+        foreach (var group in _groupCodes.Where(g => now - g.Value.Touched > MaxRoomLifetime && !_roomCodes.ContainsValue(g.Value)).Select(g => g.Key).ToList())
+        {
+            _groupCodes.Remove(group);
+        }
+
+        foreach (var stale in _attempts.Where(a => now - a.Value.Last > AttemptMemory).Select(a => a.Key).ToList())
+        {
+            _attempts.Remove(stale);
+        }
     }
 
     private sealed record RankedItem(Guid ItemId, int Likes, int Dislikes);
+
+    private sealed class CodeState
+    {
+        public CodeState(string code, DateTime now)
+        {
+            Code = code;
+            Touched = now;
+        }
+
+        public string Code { get; }
+
+        // The users who gave the right code: they do not have to give it again for as long as it is valid.
+        public HashSet<Guid> Verified { get; } = new();
+
+        public DateTime Touched { get; set; }
+    }
+
+    private sealed class AttemptState
+    {
+        public int Failures { get; set; }
+
+        public DateTime Last { get; set; }
+
+        public DateTime LockedUntil { get; set; }
+    }
 }

@@ -16,7 +16,7 @@ Every endpoint needs a Jellyfin-authenticated user, like the rest of the Jellyfi
 | `POST /SyncVote/Room` | A user allowed to organize | Create a room for the SyncPlay group of the caller. Body: [`CreateRoomRequest`](#createroomrequest) |
 | `GET /SyncVote/Rooms` | Anyone | The rooms the caller may see |
 | `GET /SyncVote/Room/{id}` | Anyone who may see it | One room |
-| `POST /SyncVote/Room/{id}/Join` | A member of the room's SyncPlay group | Join. Joining twice is fine |
+| `POST /SyncVote/Room/{id}/Join` | A member of the room's SyncPlay group | Join. Joining twice is fine. A room with a [code](#room-code) needs it in the body: `{ "Code": "123456" }` |
 | `POST /SyncVote/Room/{id}/StartVoting[?onlyLiked=true]` | The organizer | Start a round (a new round drops the previous votes). With `onlyLiked=true` it is a [runoff](#runoff) |
 | `POST /SyncVote/Room/{id}/EndVoting` | The organizer | End the round now |
 | `DELETE /SyncVote/Room/{id}` | The organizer or an administrator | Close the room |
@@ -27,9 +27,31 @@ Every endpoint needs a Jellyfin-authenticated user, like the rest of the Jellyfi
 
 A room has `Id`, `Name`, `SyncPlayGroupId`, `OrganizerId`, `MemberIds`, `IsVotingActive`, `IsVotingFinished`, `TimeLimit`
 (minutes), `SecondsRemaining` (only while voting), `SortBy`, `SelectedCollections`, `SelectedGenres`, `MaxParentalRating`,
-`TitleFilter`, `ItemTypes`, `IsRunoff`, `RunoffItemIds`, `CreatedAt` and `VotingStartedAt`.
+`TitleFilter`, `ItemTypes`, `IsRunoff`, `RunoffItemIds`, `RequiresCode`, `CodeScope`, `CreatedAt` and `VotingStartedAt`; `Code` is
+there only for the organizer and the administrators (see [room code](#room-code)).
 
 The ranking orders titles by likes, then by fewer dislikes, then by who was liked first.
+
+### Room code
+
+A room can ask for a code, so that only the people who were given it can vote, however many people are in the SyncPlay group
+(anybody who can use SyncPlay can join a group, and a group has no password).
+
+- Ask for it with `RequireCode: true` in [`CreateRoomRequest`](#createroomrequest). The server makes a random 6-digit code.
+- Everybody can see `RequiresCode`. The code itself (`Code`) is in the answers for the organizer and for administrators only; it is
+  never in the list of rooms, in the SyncPlay info or in the logs of anybody else.
+- A user who is not a member joins with `POST /SyncVote/Room/{id}/Join` and `{ "Code": "123456" }` (in the body, so that it stays
+  out of the addresses that get logged; spaces and dashes are ignored). Administrators do not need it. A member does not need it
+  again.
+- Without being a member there are no `Candidates`, no `Results` and no votes (`403 NotMember`).
+- Errors: `403 CodeRequired` (none given), `403 WrongCode`, `429 TooManyAttempts` with a `Retry-After` header and a
+  `RetryAfterSeconds` property in the body.
+- Guessing is limited: five wrong codes are free; from the sixth the user has to wait 30 seconds, then 1, 2, 4… minutes up to
+  30 (per user and room; the right code does not skip the wait). A code has a million values.
+- `CodeScope: "Session"` (the default): the code belongs to the SyncPlay group, every room the group opens gets the same one, and
+  whoever entered it does not enter it again. The group forgets it a day after it was last used.
+  `CodeScope: "Round"`: the room has a code of its own, and a new round after a finished one (also a runoff) changes it and
+  leaves only the organizer in: everybody else enters the new code to vote again.
 
 ### Runoff
 
@@ -54,6 +76,8 @@ call. `POST /SyncVote/Room/{id}/StartVoting?onlyLiked=true` starts it:
 | `TimeLimit` | Minutes, 1 to 120; 0 or missing means the plugin default |
 | `SortBy` | `Random`, `Title`, `CommunityRating` or `PremiereDate` |
 | `ItemTypes` | `Movie` (default), `Series`, `Episode` |
+| `RequireCode` | `true` to ask for a 6-digit [room code](#room-code) to vote; default `false` |
+| `CodeScope` | `Session` (default, the code lasts for the whole SyncPlay session) or `Round` (a new code for each round) |
 | `SyncPlayGroupId` | Ignored: the room always belongs to the SyncPlay group the server sees for the caller |
 
 ## Around the room

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace KappuCitti.Plugin.SyncVote.Models;
 
@@ -19,6 +20,23 @@ public class VotingRoom
     /// Gets or sets the unique identifier for the room.
     /// </summary>
     public Guid Id { get; set; } = Guid.NewGuid();
+
+    /// <summary>
+    /// Gets or sets a value indicating whether a code is needed to join the room and vote. Everybody can know this.
+    /// </summary>
+    public bool RequiresCode { get; set; }
+
+    /// <summary>
+    /// Gets or sets how long the code stays valid.
+    /// </summary>
+    public RoomCodeScope CodeScope { get; set; } = RoomCodeScope.Session;
+
+    /// <summary>
+    /// Gets or sets the code of the room. It is never kept here: the service sets it on the copy it hands to the organizer and to
+    /// the administrators, and it stays empty (and out of the JSON) for everybody else.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Code { get; set; }
 
     /// <summary>
     /// Gets or sets the name of the room.
@@ -227,6 +245,8 @@ public class VotingRoom
         var copy = new VotingRoom
         {
             Id = Id,
+            RequiresCode = RequiresCode,
+            CodeScope = CodeScope,
             Name = Name,
             SyncPlayGroupId = SyncPlayGroupId,
             OrganizerId = OrganizerId,

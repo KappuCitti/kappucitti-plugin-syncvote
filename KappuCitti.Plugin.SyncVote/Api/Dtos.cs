@@ -54,6 +54,28 @@ public class CreateRoomRequest
     /// Gets or sets the item types to include (Movie, Series, Episode). Defaults to Movie only.
     /// </summary>
     public List<string>? ItemTypes { get; set; } = new() { "Movie" };
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the room asks for a code to vote. The code (6 digits) is made by the server.
+    /// </summary>
+    public bool RequireCode { get; set; }
+
+    /// <summary>
+    /// Gets or sets how long the code stays valid: <c>Session</c> (the default, the whole SyncPlay session) or <c>Round</c> (a new code
+    /// for every voting round).
+    /// </summary>
+    public string? CodeScope { get; set; }
+}
+
+/// <summary>
+/// Request model for joining a room.
+/// </summary>
+public class JoinRoomRequest
+{
+    /// <summary>
+    /// Gets or sets the code of the room, when the room asks for one. Spaces are ignored.
+    /// </summary>
+    public string? Code { get; set; }
 }
 
 /// <summary>
