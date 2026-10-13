@@ -19,6 +19,10 @@ Picking a movie for a watch party takes longer than watching it. SyncVote moves 
 organizes opens a voting room from the SyncPlay menu, everybody in the group swipes through the same list of titles for a
 few minutes, and the most liked title is queued and played in the SyncPlay group.
 
+<p align="center">
+  <img alt="Swiping through the titles: the poster follows the finger and a green or red edge shows the vote" src="docs/images/swipe.gif" width="420">
+</p>
+
 It looks and feels like Jellyfin itself (same dialogs, same components) and speaks English and Italian.
 
 ## What you get
@@ -35,6 +39,7 @@ It looks and feels like Jellyfin itself (same dialogs, same components) and spea
   libraries (without telling who).
 - **Controls for admins**: who can organize or vote, room size, auto-start, room visibility.
 - **Like, dislike, or just use the keyboard** (← →) or swipe on touch screens.
+- **A purple dot** on the SyncPlay button while the group is voting (Jellyfin 12), so nobody misses it.
 
 ## Screenshots
 
