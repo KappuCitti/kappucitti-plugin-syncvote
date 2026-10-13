@@ -412,6 +412,31 @@ try {
     Start-Sleep 1
     Check "closing it for real removes the room and the dialog" ((@((Call $root GET "/SyncVote/Rooms").Body).Count -eq 0) -and (Js "!document.querySelector('.svDialog')"))
 
+    # The organizer of a room with a code: the options in the create form, and the code in front of them all the time.
+    Write-Host "== room code: the organizer"
+    Open-SyncPlayMenu
+    Js "document.querySelector('.svSyncVoteItem').click(); true" | Out-Null
+    Check "the create form asks whether the room needs a code, and the validity is hidden until it does" ((Wait-Js "!!document.querySelector('#svRequireCode')" 10) -and (Js "getComputedStyle(document.querySelector('#svCodeScopeBox')).display === 'none'"))
+    Js "document.querySelector('#svRequireCode').click(); true" | Out-Null
+    Check "ticking it offers how long the code lasts (the whole SyncPlay session, or one round)" ((Js "getComputedStyle(document.querySelector('#svCodeScopeBox')).display !== 'none'") -and (Js "document.querySelectorAll('#svCodeScope option').length") -eq 2)
+    Save-Shot "$shots\09-create-code.png"
+    Js "document.querySelector('#svRoomName').value='Con codice'; document.querySelector('.svCreate').click(); true" | Out-Null
+    Check "the lobby shows the code, big, to the organizer" ([bool](Wait-Js "!!document.querySelector('#svCodeBig')" 10))
+    $chipText = Js "document.querySelector('.svCode .svCodeText').innerText"
+    $apiCode = ((Call $root GET "/SyncVote/Rooms").Body | Where-Object Name -eq "Con codice").Code
+    Check "the code in the header is the code of the server, in two groups of three" ($chipText -match '^\d{3} \d{3}$' -and ($chipText -replace ' ', '') -eq $apiCode) "header '$chipText', server '$apiCode'"
+    Check "the big one is the same" ((Js "document.querySelector('#svCodeBig').innerText") -eq $chipText)
+    Save-Shot "$shots\09-lobby-code.png"
+    Js "document.querySelector('.svCode').click(); true" | Out-Null
+    Check "clicking the code copies it and says so" ([bool](Wait-Js "!!document.querySelector('.svToast')" 3))
+    Js "document.querySelector('.svStart').click(); true" | Out-Null
+    Wait-Js "!!document.querySelector('#svCard h2')" 10 | Out-Null
+    Check "while voting the code is still in the header, beside the end-voting icon and not on it" ([bool](Js "(function(){ const a = document.querySelector('.svCode'), b = document.querySelector('.svEnd'); if (!a || !b) return false; const x = a.getBoundingClientRect(), y = b.getBoundingClientRect(); return x.width > 0 && y.width > 0 && x.right <= y.left + 1 })()"))
+    Js "document.querySelector('.svEnd').click(); true" | Out-Null
+    Wait-Js "!!document.querySelector('.svPlay') || !!document.querySelector('.svCloseRoom')" 10 | Out-Null
+    Check "and with the results" ([bool](Js "!!document.querySelector('.svCode .svCodeText')"))
+    Js "document.querySelector('.svCloseRoom').click(); true" | Out-Null
+    Start-Sleep 1
     if ($modern) {
         # The Material UI menu stays in the page (keepMounted) and React rebuilds its entries when the state of the group changes; the
         # SyncVote entry is not React's, so it has to be put back in place each time (and taken away when there is no group).
@@ -441,6 +466,79 @@ try {
         Call $sv POST "/SyncPlay/Leave" | Out-Null
     }
 
+    # Somebody who is not an administrator and is not given the code: the browser logs in as svtest.
+    Write-Host "== room code: somebody who is asked for it"
+    $codeCollection = @((Call $root GET "/SyncVote/Library/Collections").Body)[0]
+    # The plugin finds the group of a user by their name among the people in it, so the browser of root has to be out of its
+    # group too, or the room made below would land there.
+    Js "ApiClient.ajax({type:'POST', url: ApiClient.getUrl('SyncPlay/Leave')}).then(()=>true)" | Out-Null
+    Start-Sleep 1
+    Call $root POST "/SyncPlay/Leave" | Out-Null
+    Call $sv POST "/SyncPlay/Leave" | Out-Null
+    Call $root POST "/SyncPlay/New" @{ GroupName = "code-group" } | Out-Null
+    $codeGroup = (Call $root GET "/SyncPlay/List").Body | Where-Object GroupName -eq "code-group" | Select-Object -First 1 -ExpandProperty GroupId
+    $roomA = (Call $root POST "/SyncVote/Room" @{ Name = "Stanza A"; TimeLimit = 3; SelectedCollections = @($codeCollection.Id); RequireCode = $true; CodeScope = "Round" }).Body
+    Js "localStorage.clear(); sessionStorage.clear(); true" | Out-Null
+    foreach ($round in 1, 2) {
+        Send-Cdp "Page.navigate" @{ url = "$Base/web/index.html" } | Out-Null
+        Wait-Js "!!document.querySelector('#txtManualName')" 25 | Out-Null
+        if ($round -eq 1 -and $null -ne $layoutValue) { Js $(if ($layoutValue) { "localStorage.setItem('layout', '$layoutValue'); true" } else { "localStorage.removeItem('layout'); true" }) | Out-Null }
+    }
+    Js "(function(){ const n=document.querySelector('#txtManualName'); const p=document.querySelector('#txtManualPassword'); n.value='svtest'; p.value='svtest-pw'; document.querySelector('.manualLoginForm').dispatchEvent(new Event('submit',{cancelable:true,bubbles:true})); return true })()" | Out-Null
+    Check "the browser is logged in as an ordinary user" ([bool](Wait-Js "!!window.__syncVoteManager && !!window.ApiClient && !!ApiClient.accessToken()" 25))
+    Start-Sleep 3
+    Js "ApiClient.ajax({type:'POST', url: ApiClient.getUrl('SyncPlay/Join'), data: JSON.stringify({GroupId:'$codeGroup'}), contentType:'application/json'}).then(()=>true)" | Out-Null
+    # The server knows the browser is in the group once it says so.
+    $inCodeGroup = "ApiClient.ajax({type:'GET', url: ApiClient.getUrl('SyncVote/SyncPlayInfo'), dataType:'json'}).then(r => (r.GroupId || '').toLowerCase() === '$(([guid]$codeGroup).ToString('N'))')"
+    Check "the browser is in the SyncPlay group of the room" ([bool](Wait-Js $inCodeGroup 20))
+    $wrongUi ="{0:D6}" -f (([int]$roomA.Code + 1) % 1000000)
+    $tryCode = { param($digits) Js "(function(){ const i = document.querySelector('#svCodeInput'); i.value = '$digits'; document.querySelector('.svEnterCode').click(); return true })()" | Out-Null; Wait-Js "!document.querySelector('.svEnterCode') || !document.querySelector('.svEnterCode').disabled" 8 | Out-Null; Start-Sleep -Milliseconds 300 }
+
+    Js "window.SyncVote.open(); true" | Out-Null
+    $promptUp = [bool](Wait-Js "!!document.querySelector('#svCodeInput') && !!document.querySelector('.svEnterCode')" 10)
+    $why = if ($promptUp) { "" } else { "page: " + (Js "(document.querySelector('.svDialog') || document.body).innerText.replace(/\s+/g, ' ').slice(0, 220)") + " | syncplay: " + (Js "ApiClient.ajax({type:'GET', url: ApiClient.getUrl('SyncVote/SyncPlayInfo'), dataType:'json'}).then(r => JSON.stringify(r))") + " | rooms: " + (Js "ApiClient.ajax({type:'GET', url: ApiClient.getUrl('SyncVote/Rooms'), dataType:'json'}).then(r => JSON.stringify(r.map(x => [x.Name, x.RequiresCode, x.SyncPlayGroupId])))") }
+    Check "opening a room that asks for a code shows the code screen, not the room" $promptUp $why
+    Check "it names the room and the code is nowhere on the page" ((Js "document.querySelector('.svDialog .formDialogHeaderTitle').innerText") -like "*Stanza A*" -and -not (Js "document.body.innerText.replace(/\s/g, '').includes('$($roomA.Code)')"))
+    Save-Shot "$shots\10-code-prompt.png"
+    & $tryCode ""
+    $emptyMsg = Js "document.querySelector('#svCodeError').innerText"
+    Check "an empty code is told to be typed" ($emptyMsg.Length -gt 3 -and (Js "getComputedStyle(document.querySelector('#svCodeError')).display !== 'none'"))
+    & $tryCode $wrongUi
+    $wrongMsg = Js "document.querySelector('#svCodeError').innerText"
+    Check "a wrong code is refused with its own message, and the screen stays" ($wrongMsg.Length -gt 3 -and $wrongMsg -ne $emptyMsg -and [bool](Js "!!document.querySelector('#svCodeInput')"))
+    Save-Shot "$shots\10-code-wrong.png"
+    foreach ($i in 1..6) { & $tryCode $wrongUi }
+    & $tryCode $roomA.Code
+    $lockedMsg = Js "document.querySelector('#svCodeError').innerText"
+    Check "after seven wrong codes the screen says to wait, with the seconds, even for the right code" ($lockedMsg -match '\d+' -and $lockedMsg -ne $wrongMsg -and [bool](Js "!!document.querySelector('#svCodeInput')")) $lockedMsg
+    Save-Shot "$shots\10-code-locked.png"
+
+    # A new room (another code, no wait): the right code, typed with a space, gets in.
+    Call $root DELETE "/SyncVote/Room/$($roomA.Id)" | Out-Null
+    Check "when the room is closed the screen goes away" ([bool](Wait-Js "!document.querySelector('.svDialog')" 10))
+    $roomB = (Call $root POST "/SyncVote/Room" @{ Name = "Stanza B"; TimeLimit = 3; SelectedCollections = @($codeCollection.Id); RequireCode = $true; CodeScope = "Round" }).Body
+    Js "window.SyncVote.open(); true" | Out-Null
+    Wait-Js "!!document.querySelector('#svCodeInput')" 10 | Out-Null
+    & $tryCode ($roomB.Code.Insert(3, " "))
+    Check "the right code gets in: the lobby, without the code on it" ([bool](Wait-Js "!!document.querySelector('#svLobbyMembers')" 10) -and -not (Js "!!document.querySelector('.svCode') || !!document.querySelector('#svCodeBig')") -and -not (Js "document.body.innerText.replace(/\s/g, '').includes('$($roomB.Code)')"))
+    Check "the server counts them as a member" (@((Call $root GET "/SyncVote/Room/$($roomB.Id)").Body.MemberIds) -contains $sv.UserId)
+
+    # A code works at any time: while the round runs, the voting card is there and a vote counts.
+    Call $root POST "/SyncVote/Room/$($roomB.Id)/StartVoting" | Out-Null
+    Check "the voting starts for them" ([bool](Wait-Js "!!document.querySelector('#svCard h2')" 10))
+    Js "document.querySelector('#svLike').click(); true" | Out-Null
+    Check "and their vote counts" ([bool](Wait-Js "document.querySelector('#svVotesCount').innerText.startsWith('1 ')" 8))
+
+    # A code for each round: the next round has a new code and they have to type it to vote again.
+    Call $root POST "/SyncVote/Room/$($roomB.Id)/EndVoting" | Out-Null
+    $next = (Call $root POST "/SyncVote/Room/$($roomB.Id)/StartVoting").Body
+    Check "the next round has a new code" ($next.Code -ne $roomB.Code -and $next.Code -match '^\d{6}$')
+    Check "and the screen asks for it again, by itself" ([bool](Wait-Js "!!document.querySelector('#svCodeInput')" 12))
+    & $tryCode $roomB.Code
+    Check "the old code is not good any more" ([bool](Js "!!document.querySelector('#svCodeInput')"))
+    & $tryCode $next.Code
+    Check "the new one is, and they are voting again" ([bool](Wait-Js "!!document.querySelector('#svCard h2')" 10))
+    Call $root DELETE "/SyncVote/Room/$($roomB.Id)" | Out-Null
     Call $root POST "/SyncPlay/Leave" | Out-Null
 }
 finally {

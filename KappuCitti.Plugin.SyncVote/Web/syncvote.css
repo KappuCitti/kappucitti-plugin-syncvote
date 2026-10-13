@@ -271,6 +271,75 @@
     }
 }
 
+/* The room code. In the header, for the organizer and the administrators, in every view of the room. */
+.svCode {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    margin-left: auto;
+    padding: 0.25em 0.8em;
+    border: 1px solid currentColor;
+    border-radius: 1em;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+    opacity: 0.9;
+}
+
+.svCode:hover,
+.svCode:focus-visible {
+    opacity: 1;
+}
+
+.svCode .material-icons {
+    font-size: 1.2em;
+}
+
+/* The end-voting icon follows the code, instead of pushing to the far side on its own. */
+.svCode + .svEnd {
+    margin-left: 0.5em;
+}
+
+.svCodeBig {
+    margin: 0.4em 0;
+    font-size: 2.4em;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.25em;
+    text-indent: 0.25em;
+}
+
+.svCodePrompt {
+    max-width: 22em;
+    margin: 1.5em auto;
+    text-align: center;
+}
+
+.svCodeInput {
+    text-align: center;
+    font-size: 1.6em;
+    letter-spacing: 0.3em;
+}
+
+/* Asking for a code when the room is created: one row with the line about the group. */
+.svCodeRow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0 1.5em;
+}
+
+/* Jellyfin gives the label the whole row; here the label and the line about the group share it. */
+.svCodeRow .emby-checkbox-label {
+    flex: none;
+    width: auto;
+    margin: 0;
+}
+
 .svVoteButtons {
     display: flex;
     justify-content: center;

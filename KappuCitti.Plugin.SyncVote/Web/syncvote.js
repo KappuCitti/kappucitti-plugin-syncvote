@@ -57,9 +57,17 @@
         }
         return fetch(client().getUrl(path), options).then(function (response) {
             if (!response.ok) {
-                var error = new Error(method + " " + path + " -> " + response.status);
-                error.status = response.status;
-                throw error;
+                // The body of a refusal says why ({ Error: "WrongCode", RetryAfterSeconds: 30 }).
+                return response.text().then(function (text) {
+                    var error = new Error(method + " " + path + " -> " + response.status);
+                    error.status = response.status;
+                    try {
+                        error.body = text ? JSON.parse(text) : null;
+                    } catch (ignored) {
+                        error.body = null;
+                    }
+                    throw error;
+                });
             }
             return response.text().then(function (text) {
                 return text ? JSON.parse(text) : null;
@@ -492,22 +500,47 @@
         return room.IsVotingActive ? "voting" : room.IsVotingFinished ? "results" : "lobby";
     };
 
-    SyncVoteManager.prototype.enterRoom = function (room) {
+    SyncVoteManager.prototype.isMember = function (room) {
         var self = this;
-        var member = (room.MemberIds || []).some(function (id) {
+        return !!room && (room.MemberIds || []).some(function (id) {
             return same(id, self.userId);
         });
-        var joined = member ? Promise.resolve(room) : call("POST", "SyncVote/Room/" + room.Id + "/Join");
-        return joined.then(function (updated) {
-            self.room = updated || room;
-            self.queue = [];
-            self.seen = {};
-            self.current = null;
-            self.votes = 0;
-            self.exhausted = false;
-            self.render();
-            self.startPolling();
-        });
+    };
+
+    // A room with a code lets in only the people who give it (administrators do not need it): until then there is nothing to vote on.
+    SyncVoteManager.prototype.needsCode = function () {
+        return !!this.room && !!this.room.RequiresCode && !this.isAdmin && !this.isMember(this.room);
+    };
+
+    // Gets into the room. Joining is tried without a code first: it works for a room without one, and for somebody who already
+    // gave the code of this SyncPlay session; otherwise the screen asks for it.
+    SyncVoteManager.prototype.enterRoom = function (room) {
+        var self = this;
+        var joined = this.isMember(room) ? Promise.resolve(room) : call("POST", "SyncVote/Room/" + room.Id + "/Join");
+        return joined
+            .then(function (updated) {
+                self.beginRoom(updated || room);
+            })
+            .catch(function (e) {
+                if (e.status === 403 && e.body && e.body.Error === "CodeRequired") {
+                    self.room = room;
+                    self.render();
+                    self.startPolling();
+                    return;
+                }
+                throw e;
+            });
+    };
+
+    SyncVoteManager.prototype.beginRoom = function (room) {
+        this.room = room;
+        this.queue = [];
+        this.seen = {};
+        this.current = null;
+        this.votes = 0;
+        this.exhausted = false;
+        this.render();
+        this.startPolling();
     };
 
     SyncVoteManager.prototype.startPolling = function () {
@@ -528,7 +561,12 @@
             .then(function (room) {
                 var before = self.stateOf(self.room);
                 self.room = room;
-                if (self.stateOf(room) !== before) {
+                // Out of the room (a new round with a new code) or let in (somebody gave the code in another tab): the screen follows.
+                if (self.needsCode() !== (self.view === "code")) {
+                    self.render();
+                } else if (self.view === "code") {
+                    return;
+                } else if (self.stateOf(room) !== before) {
                     self.render();
                 } else if (self.view === "lobby") {
                     self.renderLobbyMembers();
@@ -547,6 +585,10 @@
 
     SyncVoteManager.prototype.render = function () {
         this.updateBadge();
+        if (this.needsCode()) {
+            this.showCodePrompt();
+            return;
+        }
         var state = this.stateOf(this.room);
         if (state === "voting") {
             this.showVoting();
@@ -584,10 +626,129 @@
         var self = this;
         this.view = view;
         this.stopTimers();
-        return dialog.open(title, function () {
+        var body = dialog.open(title, function () {
             self.view = null;
             self.stopTimers();
         });
+        // The organizer (and the administrators) have the code of the room in front of them all the time.
+        if (view !== "create" && this.room && this.room.Code) {
+            this.addCodeChip(this.room.Code);
+        }
+        return body;
+    };
+
+    // "482913" -> "482 913"
+    function formatCode(code) {
+        return String(code).replace(/^(\d{3})(\d+)$/, "$1 $2");
+    }
+
+    // Copies text where the browser lets it (the clipboard API only works on https, so there is a fallback for plain http).
+    function copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text);
+        }
+        return new Promise(function (resolve, reject) {
+            var area = document.createElement("textarea");
+            area.value = text;
+            area.style.cssText = "position:fixed;left:-1000px;top:0;opacity:0";
+            document.body.appendChild(area);
+            area.select();
+            try {
+                document.execCommand("copy") ? resolve() : reject(new Error("copy refused"));
+            } catch (e) {
+                reject(e);
+            } finally {
+                area.remove();
+            }
+        });
+    }
+
+    SyncVoteManager.prototype.addCodeChip = function (code) {
+        var header = dialog.container.querySelector(".formDialogHeader");
+        header.insertAdjacentHTML(
+            "beforeend",
+            '<button type="button" class="svCode" title="' + esc(t("code.chip.title")) + '"><span class="material-icons" aria-hidden="true">vpn_key</span><span class="svCodeText">' + esc(formatCode(code)) + "</span></button>",
+        );
+        header.querySelector(".svCode").addEventListener("click", function () {
+            copyText(code).then(
+                function () {
+                    toast(t("code.copied"));
+                },
+                function () {
+                    toast(formatCode(code));
+                },
+            );
+        });
+    };
+
+    // ------------------------------------------------------------- room code
+
+    // Shown to somebody who is not in a room that asks for a code: nothing to vote on until the right one is typed.
+    SyncVoteManager.prototype.showCodePrompt = function () {
+        var self = this;
+        var room = this.room;
+        var body = this.openDialog("code", t("title") + ": " + room.Name);
+        body.innerHTML =
+            '<div class="svCodePrompt">' +
+            '<span class="material-icons" style="font-size:4em" aria-hidden="true">lock</span>' +
+            '<h2 class="sectionTitle">' + esc(t("code.prompt.title")) + "</h2>" +
+            '<div class="fieldDescription">' + esc(t("code.prompt.desc")) + "</div>" +
+            '<div id="svCodeError" class="svError" role="alert" style="display:none"></div>' +
+            '<div class="inputContainer"><input is="emby-input" type="text" id="svCodeInput" class="svCodeInput" inputmode="numeric" autocomplete="one-time-code" maxlength="8" label="' + esc(t("field.code")) + '"></div>' +
+            "</div>";
+        setFooter(btn(t("btn.enterCode"), "button-submit svEnterCode", "lock_open"));
+        this.startPolling();
+
+        var input = body.querySelector("#svCodeInput");
+        var error = body.querySelector("#svCodeError");
+        var submit = dialog.footer().querySelector(".svEnterCode");
+        var fail = function (message) {
+            error.textContent = message;
+            error.style.display = "";
+            input.focus();
+        };
+        var join = function () {
+            var code = input.value.replace(/\D/g, "");
+            if (!code) {
+                fail(t("msg.enterCode"));
+                return;
+            }
+            submit.disabled = true;
+            call("POST", "SyncVote/Room/" + room.Id + "/Join", { Code: code })
+                .then(function (updated) {
+                    self.beginRoom(updated);
+                })
+                .catch(function (e) {
+                    submit.disabled = false;
+                    var reason = e.body && e.body.Error;
+                    if (e.status === 429) {
+                        fail(t("msg.tooManyAttempts", (e.body && e.body.RetryAfterSeconds) || 30));
+                    } else if (e.status === 403 && reason === "WrongCode") {
+                        input.select();
+                        fail(t("msg.wrongCode"));
+                    } else if (e.status === 404) {
+                        self.refreshRoom();
+                    } else {
+                        console.error(LOG, e);
+                        fail(t("msg.error"));
+                    }
+                });
+        };
+        submit.addEventListener("click", join);
+        input.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                join();
+            }
+        });
+        input.addEventListener("input", function () {
+            error.style.display = "none";
+        });
+        setTimeout(function () {
+            if (document.body.contains(input)) {
+                input.focus();
+            }
+        }, 150);
     };
 
     // ------------------------------------------------------------ create room
@@ -650,8 +811,20 @@
                 '<div class="selectContainer"><select is="emby-select" id="svTimeLimit" label="' + esc(t("field.timeLimit")) + '">' + options([1, 3, 5, 10, 15].map(function (m) { return [m, m + " " + t("time.minutes"), m === 5]; })) + "</select></div>" +
                 '<div class="selectContainer"><select is="emby-select" id="svSortBy" label="' + esc(t("field.sortBy")) + '">' + options([["Random", t("sort.random")], ["Title", t("sort.title")], ["CommunityRating", t("sort.rating")], ["PremiereDate", t("sort.release")]]) + "</select></div>" +
                 "</div>" +
+                // The option shares a row with the line about the group, so that the form is not taller than it was; what it needs
+                // once it is on shows up only then.
+                '<div class="svCodeRow">' +
+                '<label class="emby-checkbox-label"><input type="checkbox" is="emby-checkbox" id="svRequireCode"><span class="checkboxLabel">' + esc(t("field.requireCode")) + "</span></label>" +
                 '<div class="fieldDescription">' + esc(t("info.syncPlayMembers", members)) + "</div>" +
+                "</div>" +
+                '<div id="svCodeScopeBox" style="display:none">' +
+                '<div class="fieldDescription">' + esc(t("field.requireCode.desc")) + "</div>" +
+                '<div class="selectContainer"><select is="emby-select" id="svCodeScope" label="' + esc(t("field.codeScope")) + '">' + options([["Session", t("code.scope.session")], ["Round", t("code.scope.round")]]) + "</select></div>" +
+                "</div>" +
                 "</form>";
+            body.querySelector("#svRequireCode").addEventListener("change", function () {
+                body.querySelector("#svCodeScopeBox").style.display = this.checked ? "" : "none";
+            });
             setFooter(btn(t("btn.createRoom"), "button-submit svCreate"));
 
             var warning = body.querySelector("#svAccessWarning");
@@ -721,6 +894,10 @@
                 if (titleFilter) {
                     request.TitleFilter = titleFilter;
                 }
+                if (body.querySelector("#svRequireCode").checked) {
+                    request.RequireCode = true;
+                    request.CodeScope = body.querySelector("#svCodeScope").value;
+                }
                 if (rating !== "") {
                     request.MaxParentalRating = parseInt(rating, 10);
                 }
@@ -748,6 +925,11 @@
             '<span class="material-icons" style="font-size:4em" aria-hidden="true">how_to_vote</span>' +
             '<h2 id="svLobbyMembers" class="sectionTitle"></h2>' +
             '<div class="fieldDescription">' + esc(organizer ? t("lobby.organizerHint") : t("lobby.waiting")) + "</div>" +
+            // The code, for the organizer and the administrators: this is what the others are asked for.
+            (room.Code
+                ? '<div class="svCodeBig" id="svCodeBig">' + esc(formatCode(room.Code)) + "</div>" +
+                  '<div class="fieldDescription">' + esc(t("code.lobbyHint")) + " " + esc(room.CodeScope === "Round" || room.CodeScope === 1 ? t("code.scope.round.hint") : t("code.scope.session.hint")) + "</div>"
+                : "") +
             "</div>";
         this.renderLobbyMembers();
         this.startPolling();
@@ -1145,6 +1327,14 @@
                 if (e.status === 400) {
                     // The round ended while the card was on screen.
                     self.refreshRoom();
+                } else if (e.status === 403) {
+                    // Not in the room any more (a new round has a new code): the screen asking for it shows up. Anything else is an error.
+                    resetCard(card, true);
+                    self.refreshRoom().then(function () {
+                        if (!self.needsCode()) {
+                            toast(t("msg.error"));
+                        }
+                    });
                 } else {
                     console.error(LOG, e);
                     resetCard(card, true);
