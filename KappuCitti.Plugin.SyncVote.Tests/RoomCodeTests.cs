@@ -42,6 +42,8 @@ public class RoomCodeTests
         CodeScope = scope
     };
 
+    private int Free => _settings.Configuration.WrongCodeAttempts;
+
     private VotingRoom NewRoom(string? group = "group-1", bool code = true, string? scope = null)
         => _service.CreateRoom(Organizer, group, Request(code, scope)).Value!;
 
@@ -151,6 +153,28 @@ public class RoomCodeTests
     }
 
     [Fact]
+    public void AnEnormousCodeIsJustAWrongOne()
+    {
+        var room = NewRoom();
+        var huge = "042917" + new string('0', 1_000_000);
+
+        // The right six digits buried in something huge do not count, and the try is counted like any other.
+        Assert.Equal(RoomError.WrongCode, _service.JoinRoom(room.Id, Alice, huge).Error);
+        Assert.Equal(RoomError.WrongCode, _service.JoinRoom(room.Id, Alice, new string('7', 33)).Error);
+        Assert.DoesNotContain(Alice, _service.GetRoom(room.Id)!.MemberIds);
+    }
+
+    [Fact]
+    public void CodesWithLettersAndSymbolsOnlyCountTheirDigits()
+    {
+        var room = NewRoom();
+
+        Assert.Equal(RoomError.CodeRequired, _service.JoinRoom(room.Id, Alice, "abc!?").Error);
+        Assert.Equal(RoomError.WrongCode, _service.JoinRoom(room.Id, Alice, "04a2917b9").Error);
+        Assert.True(_service.JoinRoom(room.Id, Bob, "04a2917b").Succeeded);
+    }
+
+    [Fact]
     public void AMemberDoesNotNeedTheCodeAgain()
     {
         var room = NewRoom();
@@ -194,10 +218,10 @@ public class RoomCodeTests
     // ---- wrong codes
 
     [Fact]
-    public void FiveWrongCodesLockTheUserOutForAWhile()
+    public void TheWrongCodesOfTheSettingLockTheUserOutForAWhile()
     {
         var room = NewRoom();
-        for (var i = 0; i < 5; i++)
+        for (var i = 0; i < Free; i++)
         {
             Assert.Equal(RoomError.WrongCode, _service.JoinRoom(room.Id, Alice, "000000").Error);
         }
@@ -215,7 +239,7 @@ public class RoomCodeTests
     public void EachFurtherMistakeDoublesTheWait()
     {
         var room = NewRoom();
-        for (var i = 0; i < 5; i++)
+        for (var i = 0; i < Free; i++)
         {
             _service.JoinRoom(room.Id, Alice, "000000");
         }
@@ -249,7 +273,7 @@ public class RoomCodeTests
     {
         var room = NewRoom();
         var other = _service.CreateRoom(Alice, "group-2", Request()).Value!;
-        for (var i = 0; i < 5; i++)
+        for (var i = 0; i < Free; i++)
         {
             _service.JoinRoom(room.Id, Alice, "000000");
         }
@@ -260,10 +284,10 @@ public class RoomCodeTests
     }
 
     [Fact]
-    public void FourMistakesAreFreeAndTheRightCodeStillWorks()
+    public void MistakesBelowTheLimitAreFreeAndTheRightCodeStillWorks()
     {
         var room = NewRoom();
-        for (var i = 0; i < 4; i++)
+        for (var i = 0; i < Free - 1; i++)
         {
             Assert.Equal(RoomError.WrongCode, _service.JoinRoom(room.Id, Alice, "000000").Error);
         }
@@ -277,18 +301,18 @@ public class RoomCodeTests
     public void MistakesAreForgottenAfterAnHour()
     {
         var room = NewRoom();
-        for (var i = 0; i < 4; i++)
+        for (var i = 0; i < Free - 1; i++)
         {
             _service.JoinRoom(room.Id, Alice, "000000");
         }
 
         _now = _now.AddHours(2);
-        for (var i = 0; i < 4; i++)
+        for (var i = 0; i < Free - 1; i++)
         {
             Assert.Equal(RoomError.WrongCode, _service.JoinRoom(room.Id, Alice, "000000").Error);
         }
 
-        // Four fresh mistakes, not eight: still no lock.
+        // The old mistakes are forgotten, so these are new ones: still under the limit, no lock.
         Assert.True(_service.JoinRoom(room.Id, Alice, "042917").Succeeded);
     }
 
@@ -420,8 +444,140 @@ public class RoomCodeTests
         Assert.Equal(expected, NewRoom(scope: asked).CodeScope);
     }
 
-    // ---- closing
+    [Fact]
+    public void SevenWrongCodesAreAllowedByDefault()
+    {
+        Assert.Equal(7, new Configuration.PluginConfiguration().WrongCodeAttempts);
 
+        var room = NewRoom();
+        for (var i = 0; i < 6; i++)
+        {
+            _service.JoinRoom(room.Id, Alice, "000000");
+        }
+
+        Assert.Equal(0, _service.GetRetryAfterSeconds(room.Id, Alice));
+        _service.JoinRoom(room.Id, Alice, "000000");
+        Assert.Equal(30, _service.GetRetryAfterSeconds(room.Id, Alice));
+    }
+
+    [Theory]
+    [InlineData(2, 2)]
+    [InlineData(1, 1)]
+    [InlineData(0, 1)]
+    [InlineData(-5, 1)]
+    [InlineData(20, 20)]
+    [InlineData(500, 20)]
+    public void TheNumberOfWrongCodesCanBeSetAndStaysBetweenOneAndTwenty(int configured, int effective)
+    {
+        _settings.Configuration.WrongCodeAttempts = configured;
+        var room = NewRoom();
+
+        for (var i = 0; i < effective - 1; i++)
+        {
+            _service.JoinRoom(room.Id, Alice, "000000");
+        }
+
+        Assert.Equal(0, _service.GetRetryAfterSeconds(room.Id, Alice));
+        _service.JoinRoom(room.Id, Alice, "000000");
+        Assert.Equal(30, _service.GetRetryAfterSeconds(room.Id, Alice));
+    }
+
+    // ---- when
+
+    [Fact]
+    public void TheCodeWorksAtAnyTimeAndWhoComesInDuringTheVotingCanVote()
+    {
+        var room = NewRoom();
+        _service.JoinRoom(room.Id, Alice, "042917");
+        _service.StartVoting(room.Id, Organizer);
+        Assert.True(_service.CastVote(room.Id, Alice, MovieA, true).Succeeded);
+
+        // Bob comes in with the code while the round is running.
+        Assert.Equal(RoomError.NotMember, _service.CastVote(room.Id, Bob, MovieA, true).Error);
+        Assert.True(_service.JoinRoom(room.Id, Bob, "042917").Succeeded);
+        Assert.True(_service.CastVote(room.Id, Bob, MovieA, false).Succeeded);
+
+        // And after the round, too: he is in, whatever comes next.
+        _service.EndVoting(room.Id, Organizer);
+        Assert.True(_service.JoinRoom(room.Id, Guid.NewGuid(), "042917").Succeeded);
+    }
+
+    // ---- the codes themselves
+    [Theory]
+    [InlineData("000000")]
+    [InlineData("111111")]
+    [InlineData("123456")]
+    [InlineData("654321")]
+    [InlineData("012345")]
+    [InlineData("121212")]
+    [InlineData("123123")]
+    [InlineData("123321")]
+    [InlineData("450054")]
+    public void TheCodesPeopleTryFirstAreEasyToGuess(string code) => Assert.True(VotingRoomService.IsEasyToGuess(code));
+
+    [Theory]
+    [InlineData("042917")]
+    [InlineData("482913")]
+    [InlineData("555111")]
+    [InlineData("100200")]
+    [InlineData("123457")]
+    public void OtherCodesAreNot(string code) => Assert.False(VotingRoomService.IsEasyToGuess(code));
+
+    [Fact]
+    public void AnEasyCodeIsNeverGiven()
+    {
+        _codes.Clear();
+        foreach (var code in new[] { "111111", "123456", "654321", "121212", "000000", "123321", "314159" })
+        {
+            _codes.Enqueue(code);
+        }
+
+        Assert.Equal("314159", _service.GetCode(NewRoom().Id));
+    }
+
+    [Fact]
+    public void TwoRoomsAtTheSameTimeNeverHaveTheSameCode()
+    {
+        _codes.Clear();
+        foreach (var code in new[] { "314159", "314159", "271828" })
+        {
+            _codes.Enqueue(code);
+        }
+
+        var one = NewRoom("group-1");
+        var two = NewRoom("group-2");
+
+        Assert.Equal("314159", _service.GetCode(one.Id));
+        Assert.Equal("271828", _service.GetCode(two.Id));
+    }
+
+    [Fact]
+    public void TheCodeOfARoomThatWasClosedCanComeBack()
+    {
+        _codes.Clear();
+        foreach (var code in new[] { "314159", "314159" })
+        {
+            _codes.Enqueue(code);
+        }
+
+        var one = NewRoom(null);
+        _service.CloseRoom(one.Id, Organizer, false);
+
+        Assert.Equal("314159", _service.GetCode(NewRoom(null).Id));
+    }
+
+    [Fact]
+    public void TheRealGeneratorNeverGivesAnEasyCode()
+    {
+        var service = new VotingRoomService(_log, _items, _settings);
+        for (var i = 0; i < 300; i++)
+        {
+            var room = service.CreateRoom(Organizer, null, Request()).Value!;
+            Assert.False(VotingRoomService.IsEasyToGuess(service.GetCode(room.Id)!));
+        }
+    }
+
+    // ---- closing
     [Fact]
     public void AClosedRoomHasNoCodeAnymore()
     {

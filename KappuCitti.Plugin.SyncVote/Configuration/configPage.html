@@ -34,6 +34,14 @@
 
                         <div class="verticalSection">
                             <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="WrongCodeAttempts" data-i18n="config.wrongCodeAttempts">Wrong room codes allowed</label>
+                                <input is="emby-input" type="number" id="WrongCodeAttempts" name="WrongCodeAttempts" min="1" max="20" />
+                                <div class="fieldDescription" data-i18n="config.wrongCodeAttempts.desc">How many wrong codes a user can type for a room that asks for one before they have to wait (30 seconds, then longer with each further mistake).</div>
+                            </div>
+                        </div>
+
+                        <div class="verticalSection">
+                            <div class="inputContainer">
                                 <label class="inputLabel inputLabelUnfocused" for="DefaultSortBy" data-i18n="config.defaultSort">Default Sort Order</label>
                                 <select is="emby-select" id="DefaultSortBy" name="DefaultSortBy">
                                     <option value="Random" data-i18n="sort.random">Random</option>
@@ -140,6 +148,7 @@
                     }).then(function (config) {
                         document.getElementById("DefaultTimeLimit").value = config.DefaultTimeLimit || 5;
                         document.getElementById("MaxRoomMembers").value = config.MaxRoomMembers || 10;
+                        document.getElementById("WrongCodeAttempts").value = config.WrongCodeAttempts || 7;
                         // Map deprecated values (A-Z/Z-A/DateAdded etc.) to supported ones
                         var sort = config.DefaultSortBy || "Random";
                         var supported = ["Random","Title","CommunityRating","PremiereDate"];
@@ -162,6 +171,7 @@
                     ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                         config.DefaultTimeLimit = parseInt(document.getElementById("DefaultTimeLimit").value);
                         config.MaxRoomMembers = parseInt(document.getElementById("MaxRoomMembers").value);
+                        config.WrongCodeAttempts = Math.min(20, Math.max(1, parseInt(document.getElementById("WrongCodeAttempts").value) || 7));
                         config.DefaultSortBy = document.getElementById("DefaultSortBy").value;
                         config.Language = document.getElementById("Language").value;
                         config.AllowPublicRooms = document.getElementById("AllowPublicRooms").checked;

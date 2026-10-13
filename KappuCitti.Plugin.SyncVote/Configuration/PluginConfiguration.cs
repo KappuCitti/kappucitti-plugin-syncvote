@@ -26,6 +26,12 @@ public class PluginConfiguration : BasePluginConfiguration
     public int MaxRoomMembers { get; set; } = 10;
 
     /// <summary>
+    /// Gets or sets how many wrong room codes a user can type before they have to wait (30 seconds, then longer with each
+    /// further mistake). Between 1 and 20.
+    /// </summary>
+    public int WrongCodeAttempts { get; set; } = 7;
+
+    /// <summary>
     /// Gets or sets a value indicating whether voting should auto-start when all SyncPlay members joined the room.
     /// </summary>
     public bool AutoStartVoting { get; set; } = false;

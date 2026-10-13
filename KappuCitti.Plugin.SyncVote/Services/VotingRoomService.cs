@@ -20,11 +20,12 @@ public class VotingRoomService
     private static readonly TimeSpan FinishedRoomLifetime = TimeSpan.FromHours(6);
     private static readonly TimeSpan MaxRoomLifetime = TimeSpan.FromHours(24);
 
-    // Wrong codes: this many are free, then the user is locked out for 30 s, doubling with each further mistake up to 30 min.
-    // A code has 1,000,000 values, so this keeps guessing it from one account out of reach.
-    private const int FreeAttempts = 5;
+    // Wrong codes: a few are free (7 by default, set in the plugin settings), then the user is locked out for 30 s, doubling with
+    // each further mistake up to 30 min. A code has 1,000,000 values: that is about 12 tries in the first 15 minutes and about 55
+    // in a day for one account.
     private const int FirstLockSeconds = 30;
     private const int MaxLockSeconds = 1800;
+    private const int MaxTypedCodeLength = 32;
     private static readonly TimeSpan AttemptMemory = TimeSpan.FromHours(1);
 
     private readonly object _lock = new();
@@ -131,7 +132,7 @@ public class VotingRoomService
                 // has entered it stays in. Otherwise the room has a code of its own.
                 var state = room.CodeScope == RoomCodeScope.Session && room.SyncPlayGroupId != null
                     ? GroupCode(room.SyncPlayGroupId)
-                    : new CodeState(CodeGenerator(), Clock());
+                    : new CodeState(NewCode(), Clock());
                 state.Verified.Add(organizerId);
                 _roomCodes[room.Id] = state;
             }
@@ -550,7 +551,9 @@ public class VotingRoomService
             return false;
         }
 
-        var digits = new string((code ?? string.Empty).Where(char.IsDigit).ToArray());
+        // Somebody typing a code does not type more than a few characters: anything longer is a wrong code, and is not even read.
+        var typed = code ?? string.Empty;
+        var digits = typed.Length > MaxTypedCodeLength ? "too long" : new string(typed.Where(char.IsDigit).ToArray());
         if (digits.Length == 0)
         {
             error = RoomError.CodeRequired;
@@ -563,9 +566,10 @@ public class VotingRoomService
             attempt ??= _attempts[key] = new AttemptState();
             attempt.Failures++;
             attempt.Last = now;
-            if (attempt.Failures >= FreeAttempts)
+            var free = Math.Clamp(_settings.Configuration.WrongCodeAttempts, 1, 20);
+            if (attempt.Failures >= free)
             {
-                var seconds = Math.Min(MaxLockSeconds, FirstLockSeconds * Math.Pow(2, Math.Min(attempt.Failures - FreeAttempts, 10)));
+                var seconds = Math.Min(MaxLockSeconds, FirstLockSeconds * Math.Pow(2, Math.Min(attempt.Failures - free, 10)));
                 attempt.LockedUntil = now.AddSeconds(seconds);
             }
 
@@ -580,12 +584,44 @@ public class VotingRoomService
         return true;
     }
 
+    // A code nobody else uses right now, and not one that is the first thing anybody would try (111111, 123456, 121212...).
+    // Callers hold _lock.
+    private string NewCode()
+    {
+        var inUse = _roomCodes.Values.Concat(_groupCodes.Values).Select(s => s.Code).ToHashSet(StringComparer.Ordinal);
+        var code = CodeGenerator();
+        for (var tries = 0; tries < 100 && (IsEasyToGuess(code) || inUse.Contains(code)); tries++)
+        {
+            code = CodeGenerator();
+        }
+
+        return code;
+    }
+
+    /// <summary>
+    /// Gets whether a code is the kind people try first: one digit repeated, a straight run up or down, a block of one to three
+    /// digits repeated, or a palindrome. A bit more than 2,000 of the million codes.
+    /// </summary>
+    /// <param name="code">The code (digits).</param>
+    /// <returns>True when the code is easy to guess.</returns>
+    public static bool IsEasyToGuess(string code)
+    {
+        if (code.Length < 2 || !code.All(char.IsDigit))
+        {
+            return true;
+        }
+
+        var run = (int step) => Enumerable.Range(1, code.Length - 1).All(i => code[i] - code[i - 1] == step);
+        var repeats = (int block) => Enumerable.Range(0, code.Length).All(i => code[i] == code[i % block]);
+        return run(1) || run(-1) || repeats(1) || repeats(2) || repeats(3) || code.SequenceEqual(code.Reverse());
+    }
+
     // The code of a SyncPlay group, made the first time a room of the group asks for one. Callers hold _lock.
     private CodeState GroupCode(string groupId)
     {
         if (!_groupCodes.TryGetValue(groupId, out var state))
         {
-            state = new CodeState(CodeGenerator(), Clock());
+            state = new CodeState(NewCode(), Clock());
             _groupCodes[groupId] = state;
         }
 
@@ -596,7 +632,7 @@ public class VotingRoomService
     // A new code for the next round: only the organizer keeps the right to vote. Callers hold _lock.
     private void RotateCode(VotingRoom room)
     {
-        var state = new CodeState(CodeGenerator(), Clock());
+        var state = new CodeState(NewCode(), Clock());
         state.Verified.Add(room.OrganizerId);
         _roomCodes[room.Id] = state;
         foreach (var member in room.MemberIds.Where(id => id != room.OrganizerId).ToList())

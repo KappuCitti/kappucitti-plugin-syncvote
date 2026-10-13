@@ -280,11 +280,11 @@ try {
     $adminIn = Call $root POST "/SyncVote/Room/$($coded.Body.Id)/Join"
     Check "an administrator gets in without the code" ($adminIn.Status -eq 200 -and $adminIn.Body.Code -eq $code) "status $($adminIn.Status)"
 
-    # Guessing: five wrong codes are free, then the user waits (even with the right code), and is told for how long.
-    for ($i = 0; $i -lt 5; $i++) { Call $c4 POST "/SyncVote/Room/$($coded.Body.Id)/Join" @{ Code = "00000$i" } | Out-Null }
+    # Guessing: seven wrong codes (the default of the settings), then the user waits (even with the right code), and is told for how long.
+    for ($i = 0; $i -lt 7; $i++) { Call $c4 POST "/SyncVote/Room/$($coded.Body.Id)/Join" @{ Code = "00000$i" } | Out-Null }
     $locked = Invoke-WebRequest "$Base/SyncVote/Room/$($coded.Body.Id)/Join" -Method Post -Headers $c4.Headers -ContentType "application/json" -Body (@{ Code = $code } | ConvertTo-Json) -SkipHttpErrorCheck
     $lockedBody = $locked.Content | ConvertFrom-Json
-    Check "after five wrong codes the user has to wait, even with the right one" ($locked.StatusCode -eq 429 -and $lockedBody.Error -eq "TooManyAttempts" -and $lockedBody.RetryAfterSeconds -gt 0 -and [int]($locked.Headers["Retry-After"] | Select-Object -First 1) -gt 0) "status $($locked.StatusCode) $($locked.Content)"
+    Check "after seven wrong codes the user has to wait, even with the right one" ($locked.StatusCode -eq 429 -and $lockedBody.Error -eq "TooManyAttempts" -and $lockedBody.RetryAfterSeconds -gt 0 -and [int]($locked.Headers["Retry-After"] | Select-Object -First 1) -gt 0) "status $($locked.StatusCode) $($locked.Content)"
     Check "the wait of one user does not stop the others" ((Call $sv GET "/SyncVote/Room/$($coded.Body.Id)").Status -eq 200 -and (Call $c3 POST "/SyncVote/Room/$($coded.Body.Id)/Join").Status -eq 200)
 
     # The same code serves the next room of the SyncPlay group, and whoever entered it does not enter it again.
@@ -308,12 +308,32 @@ try {
     Check "and only the organizer is left in" (@($r2.Body.MemberIds).Count -eq 1 -and @($r2.Body.MemberIds)[0] -eq $sv.UserId)
     Check "whoever voted before cannot vote again without the new code" ((Call $c3 POST "/SyncVote/Vote" @{ RoomId = $round.Body.Id; ItemId = $items[0].Id; IsLike = $true }).Status -eq 403)
     Check "the old code is not good any more" ((Call $c3 POST "/SyncVote/Room/$($round.Body.Id)/Join" @{ Code = $firstCode }).Status -eq 403)
+    # What a modified client could try, as a user who is not in the room (svtest4: nothing here is the right code, and none of it
+    # may get them in). The server decides; the screens of the client are only a convenience.
+    $wrongNumber = ([int]$r2.Body.Code + 1) % 1000000
+    $rawJoin = { param($user, $json) Invoke-WebRequest "$Base/SyncVote/Room/$($round.Body.Id)/Join" -Method Post -Headers $user.Headers -ContentType "application/json" -Body $json -SkipHttpErrorCheck }
+    Check "a wrong code sent as a number is refused" ((& $rawJoin $c4 "{`"Code`": $wrongNumber}").StatusCode -in 400, 403)
+    Check "a code sent as a list is refused" ((& $rawJoin $c4 "{`"Code`": [`"$wrongNumber`"]}").StatusCode -in 400, 403)
+    Check "a code sent as an object is refused" ((& $rawJoin $c4 "{`"Code`": {`"x`": 1}}").StatusCode -in 400, 403)
+    Check "a body that is not JSON is refused" ((& $rawJoin $c4 "not json").StatusCode -in 400, 415)
+    $huge = & $rawJoin $c4 ("{`"Code`": `"" + $r2.Body.Code + ("0" * 200000) + "`"}")
+    Check "a huge body is refused as too big, without being read" ($huge.StatusCode -eq 413) "status $($huge.StatusCode)"
+    $roomNow = (Call $sv GET "/SyncVote/Room/$($round.Body.Id)").Body
+    Check "none of them made the user a member" (@($roomNow.MemberIds) -notcontains $c4.UserId)
+    Check "nor can they read what members read" ((Call $c4 GET "/SyncVote/Room/$($round.Body.Id)/Candidates?limit=5").Status -eq 403 -and (Call $c4 POST "/SyncVote/Vote" @{ RoomId = $round.Body.Id; ItemId = $items[0].Id; IsLike = $true }).Status -eq 403)
+    Check "somebody who is not logged in cannot join either" ((Invoke-WebRequest "$Base/SyncVote/Room/$($round.Body.Id)/Join" -Method Post -ContentType "application/json" -Body (@{ Code = $r2.Body.Code } | ConvertTo-Json) -SkipHttpErrorCheck).StatusCode -eq 401)    $stale = Invoke-RestMethod "$Base/Users" -Headers $root.Headers | Where-Object Name -eq "svtest5"
+    if ($stale) { Invoke-RestMethod "$Base/Users/$($stale.Id)" -Method Delete -Headers $root.Headers | Out-Null }
+    $spare = Invoke-RestMethod "$Base/Users/New" -Method Post -Headers $root.Headers -ContentType "application/json" -Body (@{ Name = "svtest5"; Password = "svtest-pw" } | ConvertTo-Json)
+    $u5 = Login "svtest5" "svtest-pw" "dev5"
+    $outside = Call $u5 POST "/SyncVote/Room/$($round.Body.Id)/Join" @{ Code = $r2.Body.Code }
+    Check "the right code is not enough outside the SyncPlay group of the room" ($outside.Status -eq 403 -and $outside.Body.Error -eq "Forbidden") "status $($outside.Status) $($outside.Body | ConvertTo-Json -Compress)"
+    Invoke-RestMethod "$Base/Users/$($spare.Id)" -Method Delete -Headers $root.Headers | Out-Null
     Check "the new one is" ((Call $c3 POST "/SyncVote/Room/$($round.Body.Id)/Join" @{ Code = $r2.Body.Code }).Status -eq 200)
     Check "a member can vote" ((Call $c3 POST "/SyncVote/Vote" @{ RoomId = $round.Body.Id; ItemId = $items[0].Id; IsLike = $true }).Status -eq 204)
     Call $sv DELETE "/SyncVote/Room/$($round.Body.Id)" | Out-Null
     $plainRoom = Call $sv POST "/SyncVote/Room" @{ Name = "Senza"; SelectedCollections = @($col.Id) }
     Check "a room that does not ask for a code has none to show" ($plainRoom.Body.RequiresCode -eq $false -and $null -eq $plainRoom.Body.Code)
-    Check "and lets anybody of the group in, as before" ((Call $c4 POST "/SyncVote/Room/$($plainRoom.Body.Id)/Join").Status -eq 200)
+    Check "and lets anybody of the group in, as before" ((Call $c3 POST "/SyncVote/Room/$($plainRoom.Body.Id)/Join").Status -eq 200)
     Call $sv DELETE "/SyncVote/Room/$($plainRoom.Body.Id)" | Out-Null
 
     Write-Host "== leave group"

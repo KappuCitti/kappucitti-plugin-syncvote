@@ -46,8 +46,11 @@ A room can ask for a code, so that only the people who were given it can vote, h
 - Without being a member there are no `Candidates`, no `Results` and no votes (`403 NotMember`).
 - Errors: `403 CodeRequired` (none given), `403 WrongCode`, `429 TooManyAttempts` with a `Retry-After` header and a
   `RetryAfterSeconds` property in the body.
-- Guessing is limited: five wrong codes are free; from the sixth the user has to wait 30 seconds, then 1, 2, 4… minutes up to
-  30 (per user and room; the right code does not skip the wait). A code has a million values.
+- Guessing is limited: after 7 wrong codes (`WrongCodeAttempts` in the plugin settings, 1 to 20) the user has to wait 30 seconds,
+  then 1, 2, 4… minutes up to 30, per user and room; the right code does not skip the wait. A code has a million values and
+  is never one of the obvious ones (`111111`, `123456`, `121212`…), nor the code of another room open at the same time.
+- The body of a join is read up to 2 KB (`413 TooLarge` beyond that); the code is the only thing in it.
+- A code works at any time: somebody who joins while a round is running can vote in it at once.
 - `CodeScope: "Session"` (the default): the code belongs to the SyncPlay group, every room the group opens gets the same one, and
   whoever entered it does not enter it again. The group forgets it a day after it was last used.
   `CodeScope: "Round"`: the room has a code of its own, and a new round after a finished one (also a runoff) changes it and

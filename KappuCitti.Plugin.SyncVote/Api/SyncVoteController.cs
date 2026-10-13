@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using KappuCitti.Plugin.SyncVote.Auth;
 using KappuCitti.Plugin.SyncVote.Compat;
@@ -10,7 +12,6 @@ using MediaBrowser.Controller.Library;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace KappuCitti.Plugin.SyncVote.Api;
 
@@ -114,11 +115,16 @@ public class SyncVoteController : ControllerBase
     /// Joins a voting room (joining twice is fine). A room with a code needs it in the body; the administrators do not.
     /// </summary>
     /// <param name="roomId">The room ID.</param>
-    /// <param name="request">The code of the room, if it has one (in the body, so that it stays out of the addresses in the logs).</param>
-    /// <returns>The room.</returns>
+    /// <returns>The room. The code of the room, if it has one, is in the body (so that it stays out of the addresses in the logs).</returns>
     [HttpPost("Room/{roomId}/Join")]
-    public ActionResult<VotingRoom> JoinRoom([FromRoute] Guid roomId, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] JoinRoomRequest? request = null)
+    public async Task<ActionResult<VotingRoom>> JoinRoom([FromRoute] Guid roomId)
     {
+        var (request, bodyError) = await ReadJoinRequestAsync().ConfigureAwait(false);
+        if (bodyError != 0)
+        {
+            return StatusCode(bodyError, new { Error = bodyError == StatusCodes.Status413PayloadTooLarge ? "TooLarge" : RoomError.Invalid.ToString() });
+        }
+
         var userId = CurrentUserId;
         var room = FindVisibleRoom(roomId);
         if (room == null)
@@ -435,6 +441,46 @@ public class SyncVoteController : ControllerBase
             TotalCount = remaining.Count,
             StartIndex = Math.Max(0, skip)
         });
+    }
+
+    // The body of a join is a few digits: more than this is not a code, and the server does not read it. An empty body is fine
+    // (a room without a code needs none).
+    private const int MaxJoinBodyBytes = 2048;
+
+    private static readonly JsonSerializerOptions JoinJson = new() { PropertyNameCaseInsensitive = true };
+
+    private async Task<(JoinRoomRequest? Request, int Error)> ReadJoinRequestAsync()
+    {
+        if (Request.ContentLength > MaxJoinBodyBytes)
+        {
+            return (null, StatusCodes.Status413PayloadTooLarge);
+        }
+
+        using var buffer = new MemoryStream();
+        var chunk = new byte[512];
+        int read;
+        while ((read = await Request.Body.ReadAsync(chunk.AsMemory()).ConfigureAwait(false)) > 0)
+        {
+            await buffer.WriteAsync(chunk.AsMemory(0, read)).ConfigureAwait(false);
+            if (buffer.Length > MaxJoinBodyBytes)
+            {
+                return (null, StatusCodes.Status413PayloadTooLarge);
+            }
+        }
+
+        if (buffer.Length == 0)
+        {
+            return (null, 0);
+        }
+
+        try
+        {
+            return (JsonSerializer.Deserialize<JoinRoomRequest>(buffer.ToArray(), JoinJson), 0);
+        }
+        catch (JsonException)
+        {
+            return (null, StatusCodes.Status400BadRequest);
+        }
     }
 
     // The code of a room goes only to the organizer and to the administrators: everybody else just gets to know that the room has one.

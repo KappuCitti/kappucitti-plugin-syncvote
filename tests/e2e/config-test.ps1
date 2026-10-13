@@ -37,7 +37,7 @@ function Set-Config($changes) {
 
 try {
     Write-Host "== defaults"
-    Check "defaults are as documented" ($original.DefaultTimeLimit -ge 1 -and $original.InjectWebClient -eq $true -and $original.DefaultCanOrganize -eq $true -and $original.DefaultCanVote -eq $true) ($original | ConvertTo-Json -Compress)
+    Check "defaults are as documented" ($original.DefaultTimeLimit -ge 1 -and $original.InjectWebClient -eq $true -and $original.DefaultCanOrganize -eq $true -and $original.DefaultCanVote -eq $true -and $original.WrongCodeAttempts -eq 7) ($original | ConvertTo-Json -Compress)
 
     # These steps switch the display language of the SERVER for a moment: only with -ChangeServerLanguage, on a server nobody is using.
     if ($ChangeServerLanguage) {
@@ -107,6 +107,23 @@ try {
     Call $root DELETE "/SyncVote/Room/$($r.Body.Id)" | Out-Null
     Set-Config @{ MaxRoomMembers = 10 }
 
+    Write-Host "== wrong room codes"
+    Set-Config @{ WrongCodeAttempts = 2 }
+    $coded = Call $root POST "/SyncVote/Room" @{ Name = "code"; SelectedCollections = @($col.Id); RequireCode = $true }
+    $wrongCode = "{0:D6}" -f (([int]$coded.Body.Code + 1) % 1000000)
+    $t1 = Call $sv POST "/SyncVote/Room/$($coded.Body.Id)/Join" @{ Code = $wrongCode }
+    $t2 = Call $sv POST "/SyncVote/Room/$($coded.Body.Id)/Join" @{ Code = $wrongCode }
+    $t3 = Call $sv POST "/SyncVote/Room/$($coded.Body.Id)/Join" @{ Code = $coded.Body.Code }
+    Check "the number of wrong codes is the one of the settings (2: then even the right code waits)" ($t1.Status -eq 403 -and $t2.Status -eq 403 -and $t3.Status -eq 429) "statuses $($t1.Status), $($t2.Status), $($t3.Status)"
+    Call $root DELETE "/SyncVote/Room/$($coded.Body.Id)" | Out-Null
+    Set-Config @{ WrongCodeAttempts = 7 }
+    $coded = Call $root POST "/SyncVote/Room" @{ Name = "code7"; SelectedCollections = @($col.Id); RequireCode = $true }
+    $wrongCode = "{0:D6}" -f (([int]$coded.Body.Code + 1) % 1000000)
+    $tries = 1..6 | ForEach-Object { (Call $sv POST "/SyncVote/Room/$($coded.Body.Id)/Join" @{ Code = $wrongCode }).Status }
+    $ok = Call $sv POST "/SyncVote/Room/$($coded.Body.Id)/Join" @{ Code = $coded.Body.Code }
+    Check "with the default (7) six mistakes are not enough to wait" (@($tries | Where-Object { $_ -ne 403 }).Count -eq 0 -and $ok.Status -eq 200) "statuses $($tries -join ','), then $($ok.Status)"
+    Call $root DELETE "/SyncVote/Room/$($coded.Body.Id)" | Out-Null
+
     Write-Host "== private rooms"
     Set-Config @{ AllowPublicRooms = $false }
     $r = Call $root POST "/SyncVote/Room" $body
@@ -133,10 +150,10 @@ try {
     Check "config page lists the new options" ((Js "!!document.querySelector('#InjectWebClient') && !!document.querySelector('#DefaultCanOrganize') && !!document.querySelector('#DefaultCanVote')"))
     if ($ChangeServerLanguage) { Check "the settings page follows the server language (Italian)" ((Js "document.querySelector('#SyncVoteConfigForm').innerText.includes('Tempo limite predefinito')")) }
     Check "config page labels are translated (no raw keys)" (-not (Js "/config\.|btn\.save/.test(document.querySelector('#SyncVoteConfigForm').innerText)"))
-    Js "document.querySelector('#MaxRoomMembers').value = '7'; document.querySelector('#InjectWebClient').checked = false; document.querySelector('#SyncVoteConfigForm').dispatchEvent(new Event('submit', {cancelable:true, bubbles:true})); true" | Out-Null
+    Js "document.querySelector('#MaxRoomMembers').value = '7'; document.querySelector('#WrongCodeAttempts').value = '3'; document.querySelector('#InjectWebClient').checked = false; document.querySelector('#SyncVoteConfigForm').dispatchEvent(new Event('submit', {cancelable:true, bubbles:true})); true" | Out-Null
     Start-Sleep 2
     $saved = Invoke-RestMethod "$Base/Plugins/$pluginId/Configuration" -Headers $root.Headers
-    Check "saving from the page stores the options" ($saved.MaxRoomMembers -eq 7 -and $saved.InjectWebClient -eq $false) ($saved | ConvertTo-Json -Compress)
+    Check "saving from the page stores the options" ($saved.MaxRoomMembers -eq 7 -and $saved.WrongCodeAttempts -eq 3 -and $saved.InjectWebClient -eq $false) ($saved | ConvertTo-Json -Compress)
 }
 finally {
     Stop-Chrome
