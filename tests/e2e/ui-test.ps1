@@ -197,6 +197,46 @@ try {
     $res = Call $root GET "/SyncVote/Room/$($room.Id)/Results"
     Check "server recorded the two likes" (@($res.Body.LikedItems).Count -eq 2) "liked=$(@($res.Body.LikedItems).Count)"
 
+    # Swipe with a real mouse drag. Only dislikes are cast here, so the likes the rest of the test relies on stay two.
+    Write-Host "== swipe"
+    $centre = Js "(function(){ const b=document.querySelector('#svCard .svPosterBox').getBoundingClientRect(); return JSON.stringify({x: Math.round(b.left+b.width/2), y: Math.round(b.top+b.height/2)}) })()" | ConvertFrom-Json
+    $mouse = { param($type, $dx) Send-Cdp "Input.dispatchMouseEvent" @{ type = $type; x = $centre.x + $dx; y = $centre.y; button = "left"; buttons = $(if ($type -eq "mouseReleased") { 0 } else { 1 }); clickCount = 1 } | Out-Null }
+    $cardState = "JSON.stringify({ textX: Math.round(document.querySelector('#svCard .svCardText').getBoundingClientRect().left), transform: document.querySelector('#svCard .svPosterBox').style.transform, opacity: document.querySelector('#svCard .svPosterBox').style.opacity, drag: document.querySelector('#svCard').dataset.drag || '', title: document.querySelector('#svCard h2') ? document.querySelector('#svCard h2').innerText : '', votes: document.querySelector('#svVotesCount').innerText })"
+    $before = Js $cardState | ConvertFrom-Json
+    & $mouse "mousePressed" 0
+    foreach ($dx in 30, 60, 120) { & $mouse "mouseMoved" $dx }
+    $drag = Js $cardState | ConvertFrom-Json
+    Check "the poster follows the pointer and tilts, the text stays" ($drag.transform -match 'translateX\(120px\).*rotate\(' -and $drag.textX -eq $before.textX) ($drag | ConvertTo-Json -Compress)
+    Check "past the threshold to the right the card shows it is a like" ($drag.drag -eq "like") ($drag | ConvertTo-Json -Compress)
+    Save-Shot "$shots\05b-swipe-like.png"
+    & $mouse "mouseMoved" 20
+    Check "back under the threshold the mark is gone" ((Js "document.querySelector('#svCard').dataset.drag || ''") -eq "")
+    & $mouse "mouseReleased" 20
+    Start-Sleep -Milliseconds 500
+    $back = Js $cardState | ConvertFrom-Json
+    Check "a short swipe springs back and casts no vote" ($back.transform -eq "" -and $back.drag -eq "" -and $back.title -eq $before.title -and $back.votes -eq $before.votes) ($back | ConvertTo-Json -Compress)
+
+    & $mouse "mousePressed" 0
+    foreach ($dx in -40, -90, -150) { & $mouse "mouseMoved" $dx }
+    Check "past the threshold to the left the card shows it is a dislike" ((Js "document.querySelector('#svCard').dataset.drag") -eq "dislike")
+    & $mouse "mouseReleased" -150
+    Start-Sleep -Milliseconds 100
+    $flying = Js $cardState | ConvertFrom-Json
+    Check "after a long swipe the poster flies out to the left" ($flying.transform -match 'translateX\(-120%\)' -and $flying.opacity -eq "0" -and $flying.textX -eq $before.textX) ($flying | ConvertTo-Json -Compress)
+    $arrived = Wait-Js "document.querySelector('#svCard h2') && document.querySelector('#svCard h2').innerText !== $((ConvertTo-Json $before.title))" 8
+    Check "the next title arrives after the vote" ([bool]$arrived)
+    Start-Sleep -Milliseconds 400
+    $next = Js $cardState | ConvertFrom-Json
+    Check "the new card is clean (nothing left of the swipe) and the vote is counted" ($next.transform -eq "" -and $next.opacity -eq "" -and $next.drag -eq "" -and $next.votes -match '^4 ') ($next | ConvertTo-Json -Compress)
+    Save-Shot "$shots\05c-after-swipe.png"
+
+    Send-Cdp "Emulation.setEmulatedMedia" @{ features = @(@{ name = "prefers-reduced-motion"; value = "reduce" }) } | Out-Null
+    Js "document.querySelector('#svDislike').click(); true" | Out-Null
+    Start-Sleep -Milliseconds 60
+    Check "with reduced motion the poster does not fly" ((Js "document.querySelector('#svCard .svPosterBox').style.opacity") -eq "")
+    Send-Cdp "Emulation.setEmulatedMedia" @{ features = @() } | Out-Null
+    Check "the vote still counts with reduced motion" ([bool](Wait-Js "document.querySelector('#svVotesCount').innerText.startsWith('5 ')" 8)) (Js "document.querySelector('#svVotesCount').innerText")
+
     Call $sv POST "/SyncVote/Vote" @{ RoomId = $room.Id; ItemId = @($res.Body.LikedItems)[0].ItemId; IsLike = $true } | Out-Null
     Js "document.querySelector('.svEnd').click(); true" | Out-Null
     $results = Wait-Js "document.querySelectorAll('.svDialog .listItem').length >= 1" 10

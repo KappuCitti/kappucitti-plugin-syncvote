@@ -108,6 +108,38 @@
     user-select: none;
 }
 
+/* The poster that arrives after a vote. */
+.svCard.svEnter .svPosterBox {
+    animation: svCardIn 0.22s ease-out;
+}
+
+@keyframes svCardIn {
+    from {
+        opacity: 0;
+        transform: scale(0.94);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+/* Colored edge while a swipe (or the like/dislike button) is on its way to a vote. */
+.svCard[data-drag="like"] .svPosterBox {
+    box-shadow: 0 0 0 4px #4caf50;
+}
+
+.svCard[data-drag="dislike"] .svPosterBox {
+    box-shadow: 0 0 0 4px #f44336;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .svCard.svEnter .svPosterBox {
+        animation: none;
+    }
+}
+
 /* Fixed-size poster slot with a shimmer until the image is there: the text below never jumps. */
 .svPosterBox {
     position: relative;

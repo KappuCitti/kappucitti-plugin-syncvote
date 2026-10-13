@@ -792,11 +792,89 @@
         bar.style.width = Math.max(0, Math.min(100, (this.remaining / this.total) * 100)) + "%";
     };
 
+    var SWIPE_DISTANCE = 80;
+    var FLY_MS = 230;
+
+    function reducedMotion() {
+        return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    }
+
+    // Only the poster moves; the text under it stays where it is and changes with the next title.
+    function mover(card) {
+        return card.querySelector(".svPosterBox");
+    }
+
+    // Puts the poster back in place, with or without the spring-back animation.
+    function resetCard(card, animate) {
+        if (!card) {
+            return;
+        }
+        delete card.dataset.drag;
+        var poster = mover(card);
+        if (!poster) {
+            return;
+        }
+        poster.style.transition = animate && !reducedMotion() ? "transform 0.2s ease-out, opacity 0.2s ease-out" : "none";
+        poster.style.transform = "";
+        poster.style.opacity = "";
+        if (!animate) {
+            void poster.offsetWidth; // apply the reset before the transition comes back
+            poster.style.transition = "";
+        }
+    }
+
+    // The poster leaves to the side of the vote. Resolves when it is gone.
+    function flyOut(card, isLike) {
+        var poster = card && mover(card);
+        if (!poster || reducedMotion()) {
+            return Promise.resolve();
+        }
+        card.dataset.drag = isLike ? "like" : "dislike";
+        poster.style.transition = "transform " + FLY_MS + "ms ease-in, opacity " + FLY_MS + "ms ease-in";
+        poster.style.transform = "translateX(" + (isLike ? "" : "-") + "120%) rotate(" + (isLike ? 18 : -18) + "deg)";
+        poster.style.opacity = "0";
+        return new Promise(function (resolve) {
+            setTimeout(resolve, FLY_MS);
+        });
+    }
+
     SyncVoteManager.prototype.enableSwipe = function (card) {
         var self = this;
         var startX = null;
+        var dragging = false;
         card.addEventListener("pointerdown", function (e) {
+            if (self.voting) {
+                return;
+            }
             startX = e.clientX;
+            dragging = false;
+            try {
+                card.setPointerCapture(e.pointerId);
+            } catch (ignored) {
+                /* the swipe still works inside the card */
+            }
+        });
+        // The card follows the finger and shows what the vote will be once it is past the threshold.
+        card.addEventListener("pointermove", function (e) {
+            if (startX === null) {
+                return;
+            }
+            var dx = e.clientX - startX;
+            if (!dragging && Math.abs(dx) < 6) {
+                return;
+            }
+            dragging = true;
+            var poster = mover(card);
+            if (!poster) {
+                return;
+            }
+            poster.style.transition = "none";
+            poster.style.transform = "translateX(" + dx + "px) rotate(" + dx / 25 + "deg)";
+            if (Math.abs(dx) > SWIPE_DISTANCE) {
+                card.dataset.drag = dx > 0 ? "like" : "dislike";
+            } else {
+                delete card.dataset.drag;
+            }
         });
         card.addEventListener("pointerup", function (e) {
             if (startX === null) {
@@ -804,12 +882,15 @@
             }
             var dx = e.clientX - startX;
             startX = null;
-            if (Math.abs(dx) > 80) {
+            if (Math.abs(dx) > SWIPE_DISTANCE && !self.voting) {
                 self.vote(dx > 0);
+            } else {
+                resetCard(card, true);
             }
         });
         card.addEventListener("pointercancel", function () {
             startX = null;
+            resetCard(card, true);
         });
     };
 
@@ -881,6 +962,9 @@
                 return;
             }
             self.current = self.queue.shift() || null;
+            resetCard(card, false);
+            // The poster below is a new element, so its entrance animation starts by itself once the class is on the card.
+            card.classList.add("svEnter");
             var count = document.getElementById("svVotesCount");
             if (count) {
                 count.textContent = t(self.votes === 1 ? "voting.cast.one" : "voting.cast", self.votes);
@@ -933,7 +1017,9 @@
             return;
         }
         this.voting = true;
-        call("POST", "SyncVote/Vote", { RoomId: this.room.Id, ItemId: item.Id, IsLike: isLike })
+        var card = document.getElementById("svCard");
+        // The card flies away while the vote is sent; the next one appears when both are done.
+        Promise.all([call("POST", "SyncVote/Vote", { RoomId: this.room.Id, ItemId: item.Id, IsLike: isLike }), flyOut(card, isLike)])
             .then(function () {
                 self.votes++;
                 self.current = null;
@@ -945,6 +1031,7 @@
                     self.refreshRoom();
                 } else {
                     console.error(LOG, e);
+                    resetCard(card, true);
                     toast(t("msg.error"));
                 }
             })
