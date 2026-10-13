@@ -10,7 +10,7 @@
     The version the catalog must give to this server, e.g. 0.1.0.1 for a Jellyfin 10.11 server.
 #>
 param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][int]$Port, [Parameter(Mandatory)][string]$Expect, [string]$Exe, [string]$WebDir,
-      [string]$ManifestUrl = "https://raw.githubusercontent.com/KappuCitti/kappucitti-plugin-syncvote/master/manifest.json")
+      [string]$ManifestUrl = "https://raw.githubusercontent.com/KappuCitti/jellyfin-plugin-syncvote/master/manifest.json")
 $ErrorActionPreference = "Stop"
 $manifestUrl = $ManifestUrl
 $guid = "6bfde2dd-8211-4964-b86d-7812a9de160b"

@@ -8,7 +8,7 @@
 <p align="center">
   <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-blue.svg"></a>
   <img alt="Jellyfin 10.10, 10.11 and 12" src="https://img.shields.io/badge/Jellyfin-10.10%20%7C%2010.11%20%7C%2012-00a4dc.svg">
-  <a href="https://github.com/KappuCitti/kappucitti-plugin-syncvote/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/KappuCitti/kappucitti-plugin-syncvote?include_prereleases"></a>
+  <a href="https://github.com/KappuCitti/jellyfin-plugin-syncvote/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/KappuCitti/jellyfin-plugin-syncvote?include_prereleases"></a>
 </p>
 
 <p align="center">
@@ -79,7 +79,7 @@ in the classic one. Native apps (Android, iOS, TV…) do not show the SyncVote e
 1. In Jellyfin, open **Dashboard → Plugins → Repositories → Add** and paste:
 
    ```text
-   https://raw.githubusercontent.com/KappuCitti/kappucitti-plugin-syncvote/master/manifest.json
+   https://raw.githubusercontent.com/KappuCitti/jellyfin-plugin-syncvote/master/manifest.json
    ```
 
 2. Open **Catalog**, install **SyncVote**, and restart the server.

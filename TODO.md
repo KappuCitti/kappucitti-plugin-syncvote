@@ -1,6 +1,6 @@
 # To do
 
-What is left, roughly in order of usefulness. Ideas are welcome as [issues](https://github.com/KappuCitti/kappucitti-plugin-syncvote/issues).
+What is left, roughly in order of usefulness. Ideas are welcome as [issues](https://github.com/KappuCitti/jellyfin-plugin-syncvote/issues).
 
 ## Next
 
