@@ -376,6 +376,35 @@ try {
     Start-Sleep 1
     Check "closing it for real removes the room and the dialog" ((@((Call $root GET "/SyncVote/Rooms").Body).Count -eq 0) -and (Js "!document.querySelector('.svDialog')"))
 
+    if ($modern) {
+        # The Material UI menu stays in the page (keepMounted) and React rebuilds its entries when the state of the group changes; the
+        # SyncVote entry is not React's, so it has to be put back in place each time (and taken away when there is no group).
+        Write-Host "== the menu entry follows the state of the group"
+        Call $sv POST "/SyncPlay/Leave" | Out-Null
+        $menuOrder = "(function(){ const l = document.querySelector('#app-sync-play-menu ul[role=menu]'); if (!l) return JSON.stringify({ none: true }); const k = Array.from(l.children); const i = k.findIndex(c => c.classList.contains('svSyncVoteItem')); const native = k.findIndex(c => c.matches('li[role=menuitem]') && !c.classList.contains('svSyncVoteItem')); return JSON.stringify({ count: k.filter(c => c.classList.contains('svSyncVoteItem')).length, after: i > 0 ? k[i - 1].tagName : null, beforeNative: native < 0 || i + 1 === native, total: document.querySelectorAll('.svSyncVoteItem').length }) })()"
+        $closeMenu = "(function(){ const b = document.querySelector('#app-sync-play-menu .MuiBackdrop-root'); if (b) b.click(); return true })()"
+        # Starting a new group leaves the current one: the header of the menu is rebuilt each time.
+        foreach ($n in 1..3) {
+            Js "ApiClient.ajax({type:'POST', url: ApiClient.getUrl('SyncPlay/New'), data: JSON.stringify({GroupName:'switch-$n'}), contentType:'application/json'}).then(()=>true)" | Out-Null
+            Start-Sleep 2
+            Open-SyncPlayMenu
+            $order = Js $menuOrder | ConvertFrom-Json
+            # Under the header of the group (a header and a divider in 12, a header in 10.x) and right in front of the native entries.
+            Check "group change $n of 3: the entry is under the header of the group, in front of the native ones" ($order.count -eq 1 -and $order.after -in "HR", "DIV" -and $order.beforeNative) ($order | ConvertTo-Json -Compress)
+            Js $closeMenu | Out-Null
+            Start-Sleep -Milliseconds 700
+        }
+        Save-Shot "$shots\08-menu-other-group.png"
+        Js "ApiClient.ajax({type:'POST', url: ApiClient.getUrl('SyncPlay/Leave')}).then(()=>true)" | Out-Null
+        Start-Sleep 2
+        Open-SyncPlayMenu
+        Check "outside any group the menu has no SyncVote entry" ((Js "document.querySelectorAll('.svSyncVoteItem').length") -eq 0) (Js $menuOrder)
+        Save-Shot "$shots\08-menu-no-group.png"
+        Js $closeMenu | Out-Null
+        Start-Sleep -Milliseconds 700
+        Call $sv POST "/SyncPlay/Leave" | Out-Null
+    }
+
     Call $root POST "/SyncPlay/Leave" | Out-Null
 }
 finally {
