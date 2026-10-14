@@ -209,6 +209,13 @@ not out yet, SyncVote stays unavailable until it is.
 </details>
 
 <details>
+<summary>SyncVote does not see my SyncPlay group, or shows another one</summary>
+
+Jellyfin tells the plugin which people are in each SyncPlay group, by user name, but not which of their devices is in which group.
+If **the same account** is in two different groups at once (for example the phone in one and the browser in another), SyncVote can
+pick the wrong one. Keep one account in one group at a time, or leave the group on the device you do not use.
+</details>
+<details>
 <summary>The screens are in the wrong language</summary>
 
 They follow the display language of the server. Change it in Dashboard → General, or pick a language in the plugin settings.
@@ -224,6 +231,7 @@ It only appears when your server has Jellyfin collections (box sets). Create one
 
 - [API reference](docs/API.md): the endpoints of the plugin.
 - [Development guide](docs/DEVELOPMENT.md): build, test, how the Jellyfin versions are supported.
+- [Security policy](SECURITY.md): how to report a vulnerability.
 - [Contributing](CONTRIBUTING.md) and the [open issues](https://github.com/KappuCitti/jellyfin-plugin-syncvote/issues) (what is planned).
 - [End-to-end tests](tests/e2e/README.md).
 
