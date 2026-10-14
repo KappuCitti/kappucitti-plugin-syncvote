@@ -670,7 +670,14 @@
         var self = this;
         var room = this.room;
         var header = dialog.container.querySelector(".formDialogHeader");
-        header.insertAdjacentHTML("beforeend", '<span class="svCodeTools"></span>');
+        // Before the end-voting icon when there is one (it is the last thing of the header): after a new code the tools are put
+        // back, and behind the icon they would push it away from the edge.
+        var endIcon = header.querySelector(".svEnd");
+        if (endIcon) {
+            endIcon.insertAdjacentHTML("beforebegin", '<span class="svCodeTools"></span>');
+        } else {
+            header.insertAdjacentHTML("beforeend", '<span class="svCodeTools"></span>');
+        }
         var tools = header.querySelector(".svCodeTools");
         var canRenew = this.canClose();
         var timer = null;

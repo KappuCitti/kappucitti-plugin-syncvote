@@ -444,9 +444,16 @@ try {
     Js "document.querySelector('.svStart').click(); true" | Out-Null
     Wait-Js "!!document.querySelector('#svCard h2')" 10 | Out-Null
     Check "while voting the code is still in the header, beside the end-voting icon and not on it" ([bool](Js "(function(){ const a = document.querySelector('.svCode'), b = document.querySelector('.svEnd'); if (!a || !b) return false; const x = a.getBoundingClientRect(), y = b.getBoundingClientRect(); return x.width > 0 && y.width > 0 && x.right <= y.left + 1 })()"))
+    # A new code while voting: the code and the stop icon keep their places (the icon stays at the far edge, after the code).
+    Js "document.querySelector('.svCodeRenew').click(); document.querySelector('.svCodeYes').click(); true" | Out-Null
+    Wait-Js "document.querySelector('.svCode') && document.querySelector('.svCode .svCodeText').innerText !== '$chipText'" 8 | Out-Null
+    $placed = Js "(function(){ const h = document.querySelector('.svDialog .formDialogHeader').getBoundingClientRect(), a = document.querySelector('.svCodeTools').getBoundingClientRect(), b = document.querySelector('.svEnd').getBoundingClientRect(); return JSON.stringify({ codeBeforeStop: a.right <= b.left + 1, stopAtTheEdge: b.right >= h.right - 40, codeAtTheEdge: a.right >= b.left - 20 }) })()" | ConvertFrom-Json
+    Check "after a new code the stop icon is still at the far edge, with the code right before it" ($placed.codeBeforeStop -and $placed.stopAtTheEdge -and $placed.codeAtTheEdge) ($placed | ConvertTo-Json -Compress)
+    Save-Shot "$shots\09-code-renewed-voting.png"
     Js "document.querySelector('.svEnd').click(); true" | Out-Null
     Wait-Js "!!document.querySelector('.svPlay') || !!document.querySelector('.svCloseRoom')" 10 | Out-Null
     Check "and with the results" ([bool](Js "!!document.querySelector('.svCode .svCodeText')"))
+    Check "the results come up for the organizer" ([bool](Wait-Js "!!document.querySelector('.svCloseRoom')" 10))
     Js "document.querySelector('.svCloseRoom').click(); true" | Out-Null
     Start-Sleep 1
     if ($modern) {
