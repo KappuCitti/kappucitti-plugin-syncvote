@@ -20,7 +20,8 @@ is the [README](README.md); this file is the short version of what an agent need
   language (`-ChangeServerLanguage`). Use isolated servers (`tests/e2e/new-server.ps1`).
 - **Security**: every endpoint needs Jellyfin authentication except the client files; organizer-only actions are checked in
   `VotingRoomService`; the SyncPlay group of a room is what the server sees for the user, never what the client sends.
-- **The client** only relies on `ApiClient`, the DOM of the SyncPlay menu (`.syncPlayGroupMenu`, `data-id="leave-group"` in the
+  The code of a room lives only in `VotingRoomService`, goes to the organizer and administrators only (`ForViewer` in the
+  controller), travels in the body of the join request, and is never logged or put in a model that is sent to everybody.- **The client** only relies on `ApiClient`, the DOM of the SyncPlay menu (`.syncPlayGroupMenu`, `data-id="leave-group"` in the
   classic layout; `#app-sync-play-menu` and `#sync-play-active-subheader` in the Material UI one) and Jellyfin's own CSS classes.
   The web client has two layouts (12 made the Material UI one the default): run `tests/e2e/ui-test.ps1` for `-Layout legacy` and
   `-Layout modern` after touching the client. `Dashboard.alert` cannot be used for dialogs (it forces a single OK button). Jellyfin lays the dialog
@@ -33,5 +34,6 @@ is the [README](README.md); this file is the short version of what an agent need
 ## State
 
 Working on Jellyfin 10.10, 10.11 and 12: rooms, voting with a server-side time limit, filters (library folders, collections,
-genres, age rating, title), results, playing the winner in SyncPlay, access checks, permissions, English and Italian.
+genres, age rating, title), results, runoff, playing the winner in SyncPlay, access checks, permissions, an optional room code
+(made by the server, with a wait after wrong guesses and a button to make a new one), swipe animation, English and Italian.
 Rooms live in memory by design. See the [open issues](https://github.com/KappuCitti/jellyfin-plugin-syncvote/issues) for what is next.
